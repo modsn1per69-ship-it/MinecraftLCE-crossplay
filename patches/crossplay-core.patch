@@ -1,0 +1,1662 @@
+diff --git a/Minecraft.Client/ClientConnection.cpp b/Minecraft.Client/ClientConnection.cpp
+index b80eaed9c93312369dcca55665a6825d1e41072b..a115cddd6d76fc021d41e35755da1b703df3efd9 100644
+--- a/Minecraft.Client/ClientConnection.cpp
++++ b/Minecraft.Client/ClientConnection.cpp
+@@ -720,6 +720,7 @@ void ClientConnection::handleSetEntityData(shared_ptr<SetEntityDataPacket> packe
+ 
+ void ClientConnection::handleAddPlayer(shared_ptr<AddPlayerPacket> packet)
+ {
++#if !defined(CONSOLE_LEGACY_RELAY)
+ 	// Some remote players could actually be local players that are already added
+ 	for(unsigned int idx = 0; idx < XUSER_MAX_COUNT; ++idx)
+ 	{
+@@ -734,6 +735,7 @@ void ClientConnection::handleAddPlayer(shared_ptr<AddPlayerPacket> packet)
+ 			return;
+ 		}
+ 	}
++#endif
+ 
+     double x = packet->x / 32.0;
+     double y = packet->y / 32.0;
+@@ -1953,6 +1955,16 @@ void ClientConnection::handlePreLogin(shared_ptr<PreLoginPacket> packet)
+ 
+ #endif // _XBOX
+ 
++#if defined(CONSOLE_LEGACY_RELAY)
++	// Relay sessions authenticate peers using the relay session and build ID, so
++	// Xbox Live friendship and UGC permission results do not apply here.
++	canPlay = TRUE;
++	canPlayLocal = TRUE;
++	isAtLeastOneFriend = TRUE;
++	isFriendsWithHost = TRUE;
++	cantPlayContentRestricted = FALSE;
++#endif
++
+ 	if(!canPlay || !canPlayLocal || !isAtLeastOneFriend || cantPlayContentRestricted)
+ 	{
+ #ifndef __PS3__
+diff --git a/Minecraft.Client/Common/Consoles_App.cpp b/Minecraft.Client/Common/Consoles_App.cpp
+index 12aecb3d4c7e4abdc87d6db0ea87f4bf26baf44b..980393f9fa2847837406facc587dbb59993846d4 100644
+--- a/Minecraft.Client/Common/Consoles_App.cpp
++++ b/Minecraft.Client/Common/Consoles_App.cpp
+@@ -1,4 +1,4 @@
+-ï»¿
++
+ #include "stdafx.h"
+ 
+ #include "..\..\Minecraft.World\Recipy.h"
+@@ -31,6 +31,7 @@
+ #include "..\..\Minecraft.Client\Xbox\XML\xmlFilesCallback.h"
+ #endif
+ #include "Minecraft_Macros.h"
++#include "Network\Relay\LegacyRelayPolicy.h"
+ #include "..\..\Minecraft.Client\PlayerList.h"
+ #include "..\..\Minecraft.Client\ServerPlayer.h"
+ #include "GameRules\ConsoleGameRules.h"
+@@ -2511,6 +2512,14 @@ void CMinecraftApp::HandleXuiActions(void)
+ 				break;
+ 			case eAppAction_SaveGame:
+ 				SetAction(i,eAppAction_Idle);
++#if defined(CONSOLE_LEGACY_RELAY)
++				// A relay client never owns the host world. Ignore remote save
++				// transitions instead of opening the platform commerce upsell.
++				if(!g_NetworkManager.IsHost())
++				{
++					break;
++				}
++#endif
+ 				if(!GetChangingSessionType())
+ 				{
+ 					// If this is the trial game, do an upsell
+@@ -4672,7 +4681,7 @@ void CMinecraftApp::SignInChangeCallback(LPVOID pParam,bool bPrimaryPlayerChange
+ 				// we are going to switch to an offline game as it will likely crash due to incompatible parallel processes
+ 				bool switchToOffline = false;
+ 				// If it's an online game, and the primary profile is no longer signed into LIVE then we act as if disconnected
+-				if( !ProfileManager.IsSignedInLive( ProfileManager.GetLockedProfile() ) && !g_NetworkManager.IsLocalGame() )
++				if(!LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetLockedProfile()) && !g_NetworkManager.IsLocalGame())
+ 				{
+ 					switchToOffline = true;
+ 				}
+@@ -4740,7 +4749,7 @@ void CMinecraftApp::SignInChangeCallback(LPVOID pParam,bool bPrimaryPlayerChange
+ 			}
+ 			// Some menus require the player to be signed in to live, so if this callback happens and the primary player is
+ 			// no longer signed in then nav back
+-			else if ( pApp->GetLiveLinkRequired() && !ProfileManager.IsSignedInLive( ProfileManager.GetLockedProfile() ) )
++			else if(pApp->GetLiveLinkRequired() && !LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetLockedProfile()))
+ 			{
+ 				pApp->SetAction(iPrimaryPlayer,eAppAction_EthernetDisconnected);
+ 			}
+@@ -9532,4 +9541,4 @@ bool CMinecraftApp::HasReachedMainMenu()
+ {
+ 	return m_hasReachedMainMenu;
+ }
+-#endif
+\ No newline at end of file
++#endif
+diff --git a/Minecraft.Client/Common/Network/GameNetworkManager.cpp b/Minecraft.Client/Common/Network/GameNetworkManager.cpp
+index 2a80f80a53d49cc48593368127eb48db187dca51..46b1f6c558ad3e763c347fedeb8b281edb4312f5 100644
+--- a/Minecraft.Client/Common/Network/GameNetworkManager.cpp
++++ b/Minecraft.Client/Common/Network/GameNetworkManager.cpp
+@@ -65,7 +65,9 @@ void CGameNetworkManager::Initialise()
+ 	ServerStoppedCreate( false );
+ 	ServerReadyCreate( false );
+ 	int flagIndexSize = LevelRenderer::getGlobalChunkCount() / (Level::maxBuildHeight / 16);		// dividing here by number of renderer chunks in one column
+-#ifdef _XBOX
++#if defined CONSOLE_LEGACY_RELAY
++	s_pPlatformNetworkManager = new CPlatformNetworkManagerRelay();
++#elif defined _XBOX
+ 	s_pPlatformNetworkManager = new CPlatformNetworkManagerXbox();
+ #elif defined __PS3__ || defined __ORBIS__ || defined __PSVITA__
+ 	s_pPlatformNetworkManager = new CPlatformNetworkManagerSony();
+@@ -1879,12 +1881,22 @@ int  CGameNetworkManager::GetLockedProfile()
+ 
+ bool CGameNetworkManager::IsSignedInLive(int playerIdx)
+ {
++#if defined(CONSOLE_LEGACY_RELAY)
++	(void)playerIdx;
++	return true;
++#else
+ 	return ProfileManager.IsSignedInLive(playerIdx);
++#endif
+ }
+ 
+ bool CGameNetworkManager::AllowedToPlayMultiplayer(int playerIdx)
+ {
++#if defined(CONSOLE_LEGACY_RELAY)
++	(void)playerIdx;
++	return true;
++#else
+ 	return ProfileManager.AllowedToPlayMultiplayer(playerIdx);
++#endif
+ }
+ 
+ char *CGameNetworkManager::GetOnlineName(int playerIdx)
+diff --git a/Minecraft.Client/Common/Network/GameNetworkManager.h b/Minecraft.Client/Common/Network/GameNetworkManager.h
+index 1bb532dab197c9ae0b433fb2e68b397fd7997a81..d3b224854d2b7a53733d3ea218a606d272487fe9 100644
+--- a/Minecraft.Client/Common/Network/GameNetworkManager.h
++++ b/Minecraft.Client/Common/Network/GameNetworkManager.h
+@@ -4,7 +4,10 @@ using namespace std;
+ #include <qnet.h>
+ #include "..\..\..\Minecraft.World\C4JThread.h"
+ #include "NetworkPlayerInterface.h"
+-#ifdef _XBOX
++#if defined CONSOLE_LEGACY_RELAY
++#include "Relay\PlatformNetworkManagerRelay.h"
++#endif
++#if defined _XBOX
+ #include "..\..\Xbox\Network\PlatformNetworkManagerXbox.h"
+ #elif defined __PS3__ || defined __ORBIS__ || defined __PSVITA__
+ #include "..\..\Common\Network\Sony\PlatformNetworkManagerSony.h"
+@@ -21,6 +24,7 @@ using namespace std;
+ 
+ class ClientConnection;
+ class Minecraft;
++class CPlatformNetworkManagerStub;
+ 
+ 
+ // This class implements the game-side interface to the networking system. As such, it is platform independent and may contain bits of game-side code where appropriate.
+@@ -29,7 +33,11 @@ class Minecraft;
+ 
+ class CGameNetworkManager
+ {
+-#ifdef _XBOX
++	friend class CPlatformNetworkManagerStub;
++#if defined CONSOLE_LEGACY_RELAY
++	friend class CPlatformNetworkManagerRelay;
++#endif
++#if defined _XBOX
+ 	friend class CPlatformNetworkManagerXbox;
+ #elif defined __PS3__ || defined __ORBIS__ || defined __PSVITA__
+ 	friend class CPlatformNetworkManagerSony;
+diff --git a/Minecraft.Client/Common/UI/UIScene_CreateWorldMenu.cpp b/Minecraft.Client/Common/UI/UIScene_CreateWorldMenu.cpp
+index fa41909df51ee731287c2bd82975006b0d3b104f..dc4d0aa4accdba99bcbb95c2613c7c6790c74fd6 100644
+--- a/Minecraft.Client/Common/UI/UIScene_CreateWorldMenu.cpp
++++ b/Minecraft.Client/Common/UI/UIScene_CreateWorldMenu.cpp
+@@ -1,6 +1,7 @@
+ #include "stdafx.h"
+ #include "UI.h"
+ #include "UIScene_CreateWorldMenu.h"
++#include "..\Network\Relay\LegacyRelayPolicy.h"
+ #include "..\..\MinecraftServer.h"
+ #include "..\..\Minecraft.h"
+ #include "..\..\Options.h"
+@@ -79,9 +80,9 @@ UIScene_CreateWorldMenu::UIScene_CreateWorldMenu(int iPad, void *initData, UILay
+ 	m_pDLCPack = NULL;
+ 	m_bRebuildTouchBoxes = false;
+ 
+-	m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++	m_bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 	// 4J-PB - read the settings for the online flag. We'll only save this setting if the user changed it.
+-	bool bGameSetting_Online=(app.GetGameSettings(m_iPad,eGameSetting_Online)!=0);
++	bool bGameSetting_Online = LegacyRelayPolicy::OnlineGame(app.GetGameSettings(m_iPad, eGameSetting_Online) != 0);
+ 	m_MoreOptionsParams.bOnlineSettingChangedBySystem=false;
+ 
+ 	// 4J-PB - Removing this so that we can attempt to create an online game on PS3 when we are a restricted child account
+@@ -658,7 +659,7 @@ void UIScene_CreateWorldMenu::handleTimerComplete(int id)
+ 	{
+ 	case GAME_CREATE_ONLINE_TIMER_ID:
+ 		{
+-			bool bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++			bool bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 
+ 			if(bMultiplayerAllowed != m_bMultiplayerAllowed)
+ 			{
+@@ -808,13 +809,13 @@ void UIScene_CreateWorldMenu::checkStateAndStartGame()
+ 	{
+ 		if (ProfileManager.IsSignedIn(i) && (i == primaryPad || isLocalMultiplayerAvailable))
+ 		{
+-			if (isSignedInLive && !ProfileManager.IsSignedInLive(i))
++			if (isSignedInLive && !LegacyRelayPolicy::IsSignedInLive(i))
+ 			{
+ 				// Record the first non signed in live pad
+ 				iPadNotSignedInLive = i;
+ 			}
+ 
+-			isSignedInLive = isSignedInLive && ProfileManager.IsSignedInLive(i);
++			isSignedInLive = isSignedInLive && LegacyRelayPolicy::IsSignedInLive(i);
+ 		}
+ 	}
+ 
+@@ -945,7 +946,7 @@ void UIScene_CreateWorldMenu::checkStateAndStartGame()
+ 		BOOL pccFriendsAllowed = TRUE;
+ 		bool bContentRestricted = false;
+ 
+-		ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++		LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ #if defined(__PS3__) || defined(__PSVITA__)
+ 		if(isOnlineGame && isSignedInLive)
+ 		{
+@@ -1068,7 +1069,7 @@ void UIScene_CreateWorldMenu::CreateGame(UIScene_CreateWorldMenu* pClass, DWORD
+ 	XuiKillTimer(pClass->m_hObj,CHECKFORAVAILABLETEXTUREPACKS_TIMER_ID);
+ #endif
+ 
+-	bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
++	bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
+ #ifdef __PSVITA__
+ 	if(CGameNetworkManager::usingAdhocMode())
+ 	{
+@@ -1239,12 +1240,12 @@ int UIScene_CreateWorldMenu::StartGame_SignInReturned(void *pParam,bool bContinu
+ 		// It's possible that the player has not signed in - they can back out
+ 		if(ProfileManager.IsSignedIn(pClass->m_iPad))
+ 		{
+-			bool isOnlineGame = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
++			bool isOnlineGame = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
+ 			// bool isOnlineGame = pClass->m_MoreOptionsParams.bOnlineGame;
+ 			int primaryPad = ProfileManager.GetPrimaryPad();
+ 			bool noPrivileges = false;
+ 			DWORD dwLocalUsersMask = 0;
+-			bool isSignedInLive = ProfileManager.IsSignedInLive(primaryPad);
++			bool isSignedInLive = LegacyRelayPolicy::IsSignedInLive(primaryPad);
+ 			int iPadNotSignedInLive = -1;
+ 			bool isLocalMultiplayerAvailable = app.IsLocalMultiplayerAvailable();
+ 
+@@ -1252,15 +1253,15 @@ int UIScene_CreateWorldMenu::StartGame_SignInReturned(void *pParam,bool bContinu
+ 			{
+ 				if (ProfileManager.IsSignedIn(i) && ((i == primaryPad) || isLocalMultiplayerAvailable))
+ 				{
+-					if (isSignedInLive && !ProfileManager.IsSignedInLive(i))
++					if (isSignedInLive && !LegacyRelayPolicy::IsSignedInLive(i))
+ 					{
+ 						// Record the first non signed in live pad
+ 						iPadNotSignedInLive = i;
+ 					}
+ 
+-					if( !ProfileManager.AllowedToPlayMultiplayer(i) ) noPrivileges = true;
++					if( !LegacyRelayPolicy::AllowedToPlayMultiplayer(i) ) noPrivileges = true;
+ 					dwLocalUsersMask |= CGameNetworkManager::GetLocalPlayerMask(i);
+-					isSignedInLive = isSignedInLive && ProfileManager.IsSignedInLive(i);
++					isSignedInLive = isSignedInLive && LegacyRelayPolicy::IsSignedInLive(i);
+ 				}
+ 			}
+ 
+@@ -1303,7 +1304,7 @@ int UIScene_CreateWorldMenu::StartGame_SignInReturned(void *pParam,bool bContinu
+ 			BOOL pccAllowed = TRUE;
+ 			BOOL pccFriendsAllowed = TRUE;
+ 
+-			ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++			LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ 			if(!pccAllowed && !pccFriendsAllowed) noUGC = true;
+ 
+ 			if(isOnlineGame && (noPrivileges || noUGC) )
+@@ -1344,7 +1345,7 @@ int UIScene_CreateWorldMenu::ConfirmCreateReturned(void *pParam,int iPad,C4JStor
+ 
+ 	if(result==C4JStorage::EMessage_ResultAccept) 
+ 	{
+-		bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
++		bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
+ 
+ 		// 4J Stu - If we only have one controller connected, then don't show the sign-in UI again
+ 		DWORD connectedControllers = 0;
+@@ -1365,7 +1366,7 @@ int UIScene_CreateWorldMenu::ConfirmCreateReturned(void *pParam,int iPad,C4JStor
+ 		else
+ 		{
+ 			// Check if user-created content is allowed, as we cannot play multiplayer if it's not
+-			bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
++			bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
+ 			bool noUGC = false;
+ 			BOOL pccAllowed = TRUE;
+ 			BOOL pccFriendsAllowed = TRUE;
+diff --git a/Minecraft.Client/Common/UI/UIScene_JoinMenu.cpp b/Minecraft.Client/Common/UI/UIScene_JoinMenu.cpp
+index cad86dce325ab4c10c27e4b1c585a6f8e1043eff..fa9fc75cbebdaee4d331576a6ca87ddbb75f9e96 100644
+--- a/Minecraft.Client/Common/UI/UIScene_JoinMenu.cpp
++++ b/Minecraft.Client/Common/UI/UIScene_JoinMenu.cpp
+@@ -1,6 +1,7 @@
+ #include "stdafx.h"
+ #include "UI.h"
+ #include "UIScene_JoinMenu.h"
++#include "..\Network\Relay\LegacyRelayPolicy.h"
+ #include "..\..\Minecraft.h"
+ #include "..\..\TexturePackRepository.h"
+ #include "..\..\Options.h"
+@@ -402,15 +403,15 @@ void UIScene_JoinMenu::JoinGame(UIScene_JoinMenu* pClass)
+ 		{
+ 			if(ProfileManager.IsSignedIn(index))
+ 			{
+-				if (isSignedInLive && !ProfileManager.IsSignedInLive(index))
++				if (isSignedInLive && !LegacyRelayPolicy::IsSignedInLive(index))
+ 				{
+ 					// Record the first non signed in live pad
+ 					iPadNotSignedInLive = index;
+ 				}
+ 
+-				if( !ProfileManager.AllowedToPlayMultiplayer(index) ) noPrivileges = true;
++				if( !LegacyRelayPolicy::AllowedToPlayMultiplayer(index) ) noPrivileges = true;
+ 				dwLocalUsersMask |= CGameNetworkManager::GetLocalPlayerMask(index);
+-				isSignedInLive = isSignedInLive && ProfileManager.IsSignedInLive(index);
++				isSignedInLive = isSignedInLive && LegacyRelayPolicy::IsSignedInLive(index);
+ 			}
+ 		}
+ 	}
+@@ -418,10 +419,10 @@ void UIScene_JoinMenu::JoinGame(UIScene_JoinMenu* pClass)
+ 	{
+ 		if(ProfileManager.IsSignedIn(ProfileManager.GetPrimaryPad()))
+ 		{
+-			if( !ProfileManager.AllowedToPlayMultiplayer(ProfileManager.GetPrimaryPad()) ) noPrivileges = true;
++			if( !LegacyRelayPolicy::AllowedToPlayMultiplayer(ProfileManager.GetPrimaryPad()) ) noPrivileges = true;
+ 			dwLocalUsersMask |= CGameNetworkManager::GetLocalPlayerMask(ProfileManager.GetPrimaryPad());
+ 
+-			isSignedInLive = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad());
++			isSignedInLive = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad());
+ #ifdef __PSVITA__
+ 			if(CGameNetworkManager::usingAdhocMode() && SQRNetworkManager_AdHoc_Vita::GetAdhocStatus())
+ 				isSignedInLive = true;
+@@ -466,7 +467,7 @@ void UIScene_JoinMenu::JoinGame(UIScene_JoinMenu* pClass)
+ 		ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),false,&noUGC,NULL,NULL);
+ 	}
+ #else
+-	ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++	LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ 	if(!pccAllowed && !pccFriendsAllowed) noUGC = true;
+ #endif
+ 
+@@ -583,4 +584,4 @@ void UIScene_JoinMenu::handleTimerComplete(int id)
+ 		}
+ 		break;
+ 	};
+-}
+\ No newline at end of file
++}
+diff --git a/Minecraft.Client/Common/UI/UIScene_LoadMenu.cpp b/Minecraft.Client/Common/UI/UIScene_LoadMenu.cpp
+index f08fc727f9b51455b119385e8f54271596f2e177..6c42c26c2e55e832a1610affa166d9abf0b84973 100644
+--- a/Minecraft.Client/Common/UI/UIScene_LoadMenu.cpp
++++ b/Minecraft.Client/Common/UI/UIScene_LoadMenu.cpp
+@@ -1,6 +1,7 @@
+ #include "stdafx.h"
+ #include "UI.h"
+ #include "UIScene_LoadMenu.h"
++#include "..\Network\Relay\LegacyRelayPolicy.h"
+ #include "..\..\Minecraft.h"
+ #include "..\..\TexturePackRepository.h"
+ #include "..\..\Options.h"
+@@ -104,9 +105,9 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
+ 	m_bThumbnailGetFailed = false;
+ 	m_seed = 0;
+ 
+-	m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++	m_bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 	// 4J-PB - read the settings for the online flag. We'll only save this setting if the user changed it.
+-	bool bGameSetting_Online=(app.GetGameSettings(m_iPad,eGameSetting_Online)!=0);
++	bool bGameSetting_Online = LegacyRelayPolicy::OnlineGame(app.GetGameSettings(m_iPad, eGameSetting_Online) != 0);
+ 	m_MoreOptionsParams.bOnlineSettingChangedBySystem=false;
+ 
+ 	// Set the text for friends of friends, and default to on
+@@ -880,7 +881,7 @@ void UIScene_LoadMenu::handleTimerComplete(int id)
+ 	{
+ 	case GAME_CREATE_ONLINE_TIMER_ID:
+ 		{
+-			bool bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++			bool bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 
+ 			if(bMultiplayerAllowed != m_bMultiplayerAllowed)
+ 			{
+@@ -1160,13 +1161,13 @@ int UIScene_LoadMenu::LoadDataComplete(void *pParam)
+ 		{
+ 			if (ProfileManager.IsSignedIn(i) && ((i == iPrimaryPad) || isLocalMultiplayerAvailable))
+ 			{
+-				if (isSignedInLive && !ProfileManager.IsSignedInLive(i))
++				if (isSignedInLive && !LegacyRelayPolicy::IsSignedInLive(i))
+ 				{
+ 					// Record the first non signed in live pad
+ 					iPadNotSignedInLive = i;
+ 				}
+ 
+-				isSignedInLive = isSignedInLive && ProfileManager.IsSignedInLive(i);
++				isSignedInLive = isSignedInLive && LegacyRelayPolicy::IsSignedInLive(i);
+ 			}
+ 		}
+ 
+@@ -1208,7 +1209,7 @@ int UIScene_LoadMenu::LoadDataComplete(void *pParam)
+ 		BOOL pccAllowed = TRUE;
+ 		BOOL pccFriendsAllowed = TRUE;
+ 		bool bContentRestricted = false;
+-		ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++		LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ #if defined(__PS3__) || defined(__PSVITA__)
+ 		if(isOnlineGame)
+ 		{
+@@ -1424,7 +1425,7 @@ void UIScene_LoadMenu::StartGameFromSave(UIScene_LoadMenu* pClass, DWORD dwLocal
+ 	bool validSave = StorageManager.GetSaveUniqueNumber(&saveOrCheckpointId);
+ 	TelemetryManager->RecordLevelResume(pClass->m_iPad, eSen_FriendOrMatch_Playing_With_Invited_Friends, eSen_CompeteOrCoop_Coop_and_Competitive, app.GetGameSettings(pClass->m_iPad,eGameSetting_Difficulty), app.GetLocalPlayerCount(), g_NetworkManager.GetOnlinePlayerCount(), saveOrCheckpointId);
+ 
+-	bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
++	bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
+ #ifdef __PSVITA__
+ 	if(CGameNetworkManager::usingAdhocMode())
+ 	{
+@@ -1511,7 +1512,7 @@ void UIScene_LoadMenu::checkStateAndStartGame()
+ 
+ void UIScene_LoadMenu::LoadLevelGen(LevelGenerationOptions *levelGen)
+ {
+-	bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && m_MoreOptionsParams.bOnlineGame;
++	bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && m_MoreOptionsParams.bOnlineGame;
+ 
+ 	// 4J Stu - If we only have one controller connected, then don't show the sign-in UI again
+ 	DWORD connectedControllers = 0;
+@@ -1528,7 +1529,7 @@ void UIScene_LoadMenu::LoadLevelGen(LevelGenerationOptions *levelGen)
+ 		BOOL pccAllowed = TRUE;
+ 		BOOL pccFriendsAllowed = TRUE;
+ 
+-		ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++		LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ 		if(!pccAllowed && !pccFriendsAllowed) noUGC = true;
+ 
+ 		if(isClientSide && noUGC )
+@@ -1628,7 +1629,7 @@ int UIScene_LoadMenu::StartGame_SignInReturned(void *pParam,bool bContinue, int
+ 			int primaryPad = ProfileManager.GetPrimaryPad();
+ 			bool noPrivileges = false;
+ 			DWORD dwLocalUsersMask = 0;
+-			bool isSignedInLive = ProfileManager.IsSignedInLive(primaryPad);
++			bool isSignedInLive = LegacyRelayPolicy::IsSignedInLive(primaryPad);
+ 			bool isOnlineGame = pClass->m_MoreOptionsParams.bOnlineGame;
+ 			int iPadNotSignedInLive = -1;
+ 			bool isLocalMultiplayerAvailable = app.IsLocalMultiplayerAvailable();
+@@ -1637,15 +1638,15 @@ int UIScene_LoadMenu::StartGame_SignInReturned(void *pParam,bool bContinue, int
+ 			{
+ 				if (ProfileManager.IsSignedIn(i) && ((i == primaryPad) || isLocalMultiplayerAvailable))
+ 				{
+-					if (isSignedInLive && !ProfileManager.IsSignedInLive(i))
++					if (isSignedInLive && !LegacyRelayPolicy::IsSignedInLive(i))
+ 					{
+ 						// Record the first non signed in live pad
+ 						iPadNotSignedInLive = i;
+ 					}
+ 
+-					if( !ProfileManager.AllowedToPlayMultiplayer(i) ) noPrivileges = true;
++					if( !LegacyRelayPolicy::AllowedToPlayMultiplayer(i) ) noPrivileges = true;
+ 					dwLocalUsersMask |= CGameNetworkManager::GetLocalPlayerMask(i);
+-					isSignedInLive = isSignedInLive && ProfileManager.IsSignedInLive(i);
++					isSignedInLive = isSignedInLive && LegacyRelayPolicy::IsSignedInLive(i);
+ 				}
+ 			}
+ 
+@@ -1688,7 +1689,7 @@ int UIScene_LoadMenu::StartGame_SignInReturned(void *pParam,bool bContinue, int
+ 			BOOL pccAllowed = TRUE;
+ 			BOOL pccFriendsAllowed = TRUE;
+ 
+-			ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++			LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ 			if(!pccAllowed && !pccFriendsAllowed) noUGC = true;
+ 
+ 			if(isSignedInLive && isOnlineGame && (noPrivileges || noUGC) )
+@@ -1801,4 +1802,4 @@ int UIScene_LoadMenu::MustSignInReturnedPSN(void *pParam,int iPad,C4JStorage::EM
+ // 	pClass->m_bIgnoreInput=false;
+ // 	return 0;
+ // }
+-#endif
+\ No newline at end of file
++#endif
+diff --git a/Minecraft.Client/Common/UI/UIScene_LoadOrJoinMenu.cpp b/Minecraft.Client/Common/UI/UIScene_LoadOrJoinMenu.cpp
+index 1d90da775a2adf7e7a5eb5b94d3cbefcaf73e80f..d7756f20c3d02f74eb7f6ad2ec1e213959d5ce8e 100644
+--- a/Minecraft.Client/Common/UI/UIScene_LoadOrJoinMenu.cpp
++++ b/Minecraft.Client/Common/UI/UIScene_LoadOrJoinMenu.cpp
+@@ -1,6 +1,7 @@
+ #include "stdafx.h"
+ #include "UI.h"
+ #include "UIScene_LoadOrJoinMenu.h"
++#include "..\Network\Relay\LegacyRelayPolicy.h"
+ 
+ #include "..\..\..\Minecraft.World\StringHelpers.h"
+ #include "..\..\..\Minecraft.World\net.minecraft.world.item.h"
+@@ -35,6 +36,11 @@ wstring UIScene_LoadOrJoinMenu::m_wstrStageText=L"";
+ #define JOIN_LOAD_ONLINE_TIMER_ID 0
+ #define JOIN_LOAD_ONLINE_TIMER_TIME 100
+ 
++#if defined(CONSOLE_LEGACY_RELAY) && defined(__PS3__)
++#define LEGACY_RELAY_AUTO_JOIN_TIMER_ID 4
++#define LEGACY_RELAY_AUTO_JOIN_TIMER_TIME 1500
++#endif
++
+ #ifdef _XBOX
+ #define CHECKFORAVAILABLETEXTUREPACKS_TIMER_ID 3
+ #define CHECKFORAVAILABLETEXTUREPACKS_TIMER_TIME 50
+@@ -89,7 +95,11 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
+ {
+     // Setup all the Iggy references we need for this scene
+     initialiseMovie();
++#if defined(CONSOLE_LEGACY_RELAY)
++    app.SetLiveLinkRequired(false);
++#else
+     app.SetLiveLinkRequired( true );
++#endif
+ 
+     m_iRequestingThumbnailId = 0;
+     m_iSaveInfoC=0;
+@@ -134,7 +144,7 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
+ #endif
+ 	m_eAction = eAction_None;
+ 
+-    m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++    m_bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 
+ #ifdef _XBOX_ONE
+ 	// 4J-PB - in order to buy the skin packs & texture packs, we need the signed offer ids for them, which we get in the availability info
+@@ -163,7 +173,11 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
+     StorageManager.ClearSavesInfo();
+ #endif
+ 
+-    // block input if we're waiting for DLC to install, and wipe the saves list. The end of dlc mounting custom message will fill the list again
++    // Relay builds do not use Xbox Live marketplace mounting. Waiting here leaves
++    // the load/join scene permanently blank under Xenia.
++#if defined(CONSOLE_LEGACY_RELAY)
++    Initialise();
++#else
+     if(app.StartInstallDLCProcess(m_iPad)==true || app.DLCInstallPending())
+     {
+         // if we're waiting for DLC to mount, don't fill the save list. The custom message on end of dlc mounting will do that
+@@ -173,6 +187,7 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
+     {
+         Initialise();
+     }
++#endif
+ 
+ #ifdef __PSVITA__
+     if(CGameNetworkManager::usingAdhocMode() && SQRNetworkManager_AdHoc_Vita::GetAdhocStatus())
+@@ -186,6 +201,10 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
+ 
+     g_NetworkManager.SetSessionsUpdatedCallback( &UpdateGamesListCallback, this );
+ 
++#if defined(CONSOLE_LEGACY_RELAY) && defined(__PS3__)
++    addTimer(LEGACY_RELAY_AUTO_JOIN_TIMER_ID, LEGACY_RELAY_AUTO_JOIN_TIMER_TIME);
++#endif
++
+     m_initData= new JoinMenuInitData();
+ 
+     // 4J Stu - Fix for #12530 -TCR 001 BAS Game Stability: Title will crash if the player disconnects while starting a new world and then opts to play the tutorial once they have been returned to the Main Menu.
+@@ -194,7 +213,9 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
+     // If we're not ignoring input, then we aren't still waiting for the DLC to mount, and can now check for corrupt dlc. Otherwise this will happen when the dlc has finished mounting.
+     if( !m_bIgnoreInput)
+     {
++#if !defined(CONSOLE_LEGACY_RELAY)
+         app.m_dlcManager.checkForCorruptDLCAndAlert();
++#endif
+     }
+ 
+     // 4J-PB - Only Xbox will not have trial DLC patched into the game
+@@ -402,6 +423,20 @@ void UIScene_LoadOrJoinMenu::Initialise()
+     m_iDefaultButtonsC = 0;
+ 	m_iMashUpButtonsC=0;
+ 
++#if defined(CONSOLE_LEGACY_RELAY)
++	// Xenia's experimental storage enumerator crashes on the retail save-device
++	// path. Full-version relay builds populate local actions immediately; trial
++	// builds continue through the original entitlement and trial handling below.
++	if(ProfileManager.IsFullVersion())
++	{
++		AddDefaultButtons();
++		m_bSavesDisplayed = true;
++		m_controlSavesTimer.setVisible(false);
++		m_bIgnoreInput = false;
++		return;
++	}
++#endif
++
+     // Check if we're in the trial version
+     if(ProfileManager.IsFullVersion()==false)
+     {
+@@ -481,12 +516,15 @@ void UIScene_LoadOrJoinMenu::handleGainFocus(bool navBack)
+     {
+         app.SetLiveLinkRequired( true );
+ 
+-        m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad); 
++        m_bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 
+         // re-enable button presses
+         m_bIgnoreInput=false;
+ 
+-        // block input if we're waiting for DLC to install, and wipe the saves list. The end of dlc mounting custom message will fill the list again
++        // The relay build has no Xbox Live DLC mounting completion event.
++#if defined(CONSOLE_LEGACY_RELAY)
++        m_bIgnoreInput = false;
++#else
+         if(app.StartInstallDLCProcess(m_iPad)==false)
+         {
+             // not doing a mount, so re-enable input
+@@ -498,6 +536,7 @@ void UIScene_LoadOrJoinMenu::handleGainFocus(bool navBack)
+             m_buttonListSaves.clearList();
+             m_controlSavesTimer.setVisible(true);
+         }
++#endif
+ 
+         if( m_bMultiplayerAllowed )
+         {
+@@ -1794,6 +1833,33 @@ void UIScene_LoadOrJoinMenu::handleTimerComplete(int id)
+ {
+     switch(id)
+     {
++#if defined(CONSOLE_LEGACY_RELAY) && defined(__PS3__)
++    case LEGACY_RELAY_AUTO_JOIN_TIMER_ID:
++        {
++            killTimer(LEGACY_RELAY_AUTO_JOIN_TIMER_ID);
++            UpdateGamesList();
++            if(!m_bIgnoreInput && m_currentSessions != NULL && !m_currentSessions->empty())
++            {
++                // Relay sessions have no platform friend details to resolve. Joining
++                // directly avoids the PSN-era JoinMenu timer stalling under RPCS3.
++                ProfileManager.SetLockedProfile(m_iPad);
++                m_bIgnoreInput = true;
++                app.DebugPrintf("Legacy relay: joining discovered session directly\n");
++                CGameNetworkManager::eJoinGameResult result = g_NetworkManager.JoinGame(m_currentSessions->at(0), 0);
++                if(result != CGameNetworkManager::JOINGAME_SUCCESS)
++                {
++                    app.DebugPrintf("Legacy relay: direct join failed with result %d\n", (int)result);
++                    m_bIgnoreInput = false;
++                    addTimer(LEGACY_RELAY_AUTO_JOIN_TIMER_ID, LEGACY_RELAY_AUTO_JOIN_TIMER_TIME);
++                }
++            }
++            else if(!m_bIgnoreInput)
++            {
++                addTimer(LEGACY_RELAY_AUTO_JOIN_TIMER_ID, LEGACY_RELAY_AUTO_JOIN_TIMER_TIME);
++            }
++        }
++        break;
++#endif
+     case JOIN_LOAD_ONLINE_TIMER_ID:
+         {
+ #ifdef _XBOX
+@@ -1809,7 +1875,7 @@ void UIScene_LoadOrJoinMenu::handleTimerComplete(int id)
+             }
+ #endif
+ 
+-            bool bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++            bool bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+             if(bMultiplayerAllowed != m_bMultiplayerAllowed)
+             {
+                 if( bMultiplayerAllowed )
+diff --git a/Minecraft.Client/Common/UI/UIScene_MainMenu.cpp b/Minecraft.Client/Common/UI/UIScene_MainMenu.cpp
+index 7724aaaf24e88006e7dfb87b127b50498baec92e..321887cdd5fca795e7a50c0a44ec0e6a03701337 100644
+--- a/Minecraft.Client/Common/UI/UIScene_MainMenu.cpp
++++ b/Minecraft.Client/Common/UI/UIScene_MainMenu.cpp
+@@ -6,6 +6,7 @@
+ #include "..\..\MinecraftServer.h"
+ #include "UI.h"
+ #include "UIScene_MainMenu.h"
++#include "..\Network\Relay\LegacyRelayPolicy.h"
+ #ifdef __ORBIS__
+ #include <error_dialog.h>
+ #endif
+@@ -694,7 +695,7 @@ int UIScene_MainMenu::CreateLoad_SignInReturned(void *pParam, bool bContinue, in
+ 
+ 			if(ProfileManager.IsFullVersion())
+ 			{
+-				bool bSignedInLive = ProfileManager.IsSignedInLive(iPad);
++				bool bSignedInLive = LegacyRelayPolicy::IsSignedInLive(iPad);
+ #ifdef __PSVITA__
+ 				if(CGameNetworkManager::usingAdhocMode())
+ 				{
+@@ -715,7 +716,9 @@ int UIScene_MainMenu::CreateLoad_SignInReturned(void *pParam, bool bContinue, in
+ 				if(bSignedInLive)
+ 				{
+ 					// 4J-PB - Need to check for installed DLC
++#if !defined(CONSOLE_LEGACY_RELAY)
+ 					if(!app.DLCInstallProcessCompleted()) app.StartInstallDLCProcess(iPad);
++#endif
+ 
+ 					if(ProfileManager.IsGuest(iPad))
+ 					{
+@@ -1260,16 +1263,26 @@ void UIScene_MainMenu::RunPlayGame(int iPad)
+ 	{
+ 		ProfileManager.SetLockedProfile(iPad);
+ 
++#if defined(CONSOLE_LEGACY_RELAY)
++		// Relay sessions use the local profile and companion transport, not Xbox Live.
++		pMinecraft->user->name = convStringToWstring(ProfileManager.GetGamertag(iPad));
++		m_bIgnorePress = false;
++		ui.NavigateToScene(iPad, eUIScene_LoadOrJoinMenu);
++		return;
++#endif
++
+ 		// If the player was signed in before selecting play, we'll not have read the profile yet, so query the sign-in status to get this to happen
+ 		ProfileManager.QuerySigninStatus();
+ 
+ 		// 4J-PB - Need to check for installed DLC
++#if !defined(CONSOLE_LEGACY_RELAY)
+ 		if(!app.DLCInstallProcessCompleted()) app.StartInstallDLCProcess(iPad);
++#endif
+ 
+ 		if(ProfileManager.IsFullVersion())
+ 		{
+ 			// are we offline?
+-			bool bSignedInLive = ProfileManager.IsSignedInLive(iPad);
++			bool bSignedInLive = LegacyRelayPolicy::IsSignedInLive(iPad);
+ #ifdef __PSVITA__
+ 			if(app.GetGameSettings(ProfileManager.GetPrimaryPad(),eGameSetting_PSVita_NetworkModeAdhoc) == true)
+ 			{
+@@ -1801,7 +1814,6 @@ void UIScene_MainMenu::RunUnlockOrDLC(int iPad)
+ void UIScene_MainMenu::tick()
+ {
+ 	UIScene::tick();
+-
+ #if defined(__PS3__) || defined (__ORBIS__) || defined(__PSVITA__)
+ 	if(m_bLaunchFullVersionPurchase)
+ 	{
+diff --git a/Minecraft.Client/Common/XUI/XUI_MainMenu.cpp b/Minecraft.Client/Common/XUI/XUI_MainMenu.cpp
+index 7b9c1a56ee1bd58f6fef7b6819fc8296eec5f165..8771b4ca8394645fa3b4e3e28c5bc02e2cf31442 100644
+--- a/Minecraft.Client/Common/XUI/XUI_MainMenu.cpp
++++ b/Minecraft.Client/Common/XUI/XUI_MainMenu.cpp
+@@ -948,6 +948,14 @@ void CScene_Main::RunPlayGame(int iPad)
+ 	{
+ 		ProfileManager.SetLockedProfile(iPad);
+ 
++#if defined(CONSOLE_LEGACY_RELAY)
++		// Relay sessions use the local profile and companion transport, not Xbox Live.
++		pMinecraft->user->name = convStringToWstring(ProfileManager.GetGamertag(iPad));
++		m_bIgnorePress = false;
++		app.NavigateToScene(iPad, eUIScene_LoadOrJoinMenu);
++		return;
++#endif
++
+ 		// If the player was signed in before selecting play, we'll not have read the profile yet, so query the sign-in status to get this to happen
+ 		ProfileManager.QuerySigninStatus();
+ 		// 4J-PB - Need to check for installed DLC
+@@ -1285,4 +1293,4 @@ HRESULT CScene_Main::OnTimer( XUIMessageTimer *pTimer, BOOL& bHandled )
+ 	}
+ 
+ 	return S_OK;
+-}
+\ No newline at end of file
++}
+diff --git a/Minecraft.Client/Common/XUI/XUI_MultiGameInfo.cpp b/Minecraft.Client/Common/XUI/XUI_MultiGameInfo.cpp
+index bbfa243b21cb521f4f2f6c0a4d3e8e5d113e8594..7d915123b801f5e4e6dc92da0c416b017aa44471 100644
+--- a/Minecraft.Client/Common/XUI/XUI_MultiGameInfo.cpp
++++ b/Minecraft.Client/Common/XUI/XUI_MultiGameInfo.cpp
+@@ -6,6 +6,7 @@
+ #include "..\..\..\Minecraft.World\StringHelpers.h"
+ #include "XUI_MultiGameInfo.h"
+ #include "XUI_MultiGameJoinLoad.h"
++#include "..\Network\Relay\LegacyRelayPolicy.h"
+ #include "..\..\..\Minecraft.World\LevelSettings.h"
+ #include "..\..\..\Minecraft.World\Difficulty.h"
+ 
+@@ -270,7 +271,7 @@ void CScene_MultiGameInfo::JoinGame(CScene_MultiGameInfo* pClass)
+ 			if(ProfileManager.IsSignedIn(index) )
+ 			{
+ 				++dwSignedInUsers;
+-				if( !ProfileManager.AllowedToPlayMultiplayer(index) ) noPrivileges = true;
++				if(!LegacyRelayPolicy::AllowedToPlayMultiplayer(index)) noPrivileges = true;
+ 				dwLocalUsersMask |= CGameNetworkManager::GetLocalPlayerMask(index);
+ 			}
+ 		}
+@@ -280,7 +281,7 @@ void CScene_MultiGameInfo::JoinGame(CScene_MultiGameInfo* pClass)
+ 		if(ProfileManager.IsSignedIn(ProfileManager.GetPrimaryPad()) )
+ 		{
+ 			++dwSignedInUsers;
+-			if( !ProfileManager.AllowedToPlayMultiplayer(ProfileManager.GetPrimaryPad()) ) noPrivileges = true;
++			if(!LegacyRelayPolicy::AllowedToPlayMultiplayer(ProfileManager.GetPrimaryPad())) noPrivileges = true;
+ 			dwLocalUsersMask |= CGameNetworkManager::GetLocalPlayerMask(ProfileManager.GetPrimaryPad());
+ 		}
+ 	}
+@@ -289,7 +290,7 @@ void CScene_MultiGameInfo::JoinGame(CScene_MultiGameInfo* pClass)
+ 	bool noUGC = false;
+ 	BOOL pccAllowed = TRUE;
+ 	BOOL pccFriendsAllowed = TRUE;
+-	ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++	LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ 	if(!pccAllowed && !pccFriendsAllowed) noUGC = true;
+ 
+ 	if(noUGC)
+@@ -389,4 +390,3 @@ HRESULT CScene_MultiGameInfo::OnTimer( XUIMessageTimer *pTimer, BOOL& bHandled )
+ 	return S_OK;
+ }
+ 
+-
+diff --git a/Minecraft.Client/Common/XUI/XUI_MultiGameJoinLoad.cpp b/Minecraft.Client/Common/XUI/XUI_MultiGameJoinLoad.cpp
+index 73f25da5849427c4884d00171d034cb4b3b6465d..607c2b3ae237d88b68545dd1ed83ce741b512f81 100644
+--- a/Minecraft.Client/Common/XUI/XUI_MultiGameJoinLoad.cpp
++++ b/Minecraft.Client/Common/XUI/XUI_MultiGameJoinLoad.cpp
+@@ -19,6 +19,7 @@
+ #include "XUI_MultiGameInfo.h"
+ #include "XUI_MultiGameJoinLoad.h"
+ #include "XUI_MultiGameCreate.h"
++#include "..\Network\Relay\LegacyRelayPolicy.h"
+ #include "..\..\MinecraftServer.h"
+ #include "..\..\Options.h"
+ 
+@@ -73,7 +74,7 @@ HRESULT CScene_MultiGameJoinLoad::OnInit( XUIMessageInit* pInitData, BOOL& bHand
+ // 	}
+ 
+ 	m_initData= new JoinMenuInitData();
+-	m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++	m_bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 	
+ 	XPARTY_USER_LIST partyList;
+ 
+@@ -766,7 +767,7 @@ HRESULT CScene_MultiGameJoinLoad::OnNavReturn(HXUIOBJ hSceneFrom,BOOL& rfHandled
+ 	// start the texture pack timer again
+ 	XuiSetTimer(m_hObj,CHECKFORAVAILABLETEXTUREPACKS_TIMER_ID,CHECKFORAVAILABLETEXTUREPACKS_TIMER_TIME);
+ 
+-	m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad); 
++	m_bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 	
+ 	// re-enable button presses
+ 	m_bIgnoreInput=false;
+@@ -1641,7 +1642,7 @@ HRESULT CScene_MultiGameJoinLoad::OnTimer( XUIMessageTimer *pTimer, BOOL& bHandl
+ 			m_bInParty=false;
+ 		}
+ 
+-		bool bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++		bool bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 		if(bMultiplayerAllowed != m_bMultiplayerAllowed)
+ 		{
+ 			if( bMultiplayerAllowed )
+@@ -2764,4 +2765,4 @@ void CScene_MultiGameJoinLoad::SaveUploadCompleteCallback(LPVOID lpParam)
+ 	app.TMSPP_SetTitleGroupID(GROUP_ID);
+ 	// 	app.getRemoteStorage()->abort();
+ 	// 	pClass->m_eSaveUploadState = eSaveUpload_Idle;
+-}
+\ No newline at end of file
++}
+diff --git a/Minecraft.Client/EntityTracker.cpp b/Minecraft.Client/EntityTracker.cpp
+index 8f1dbcd854ac221203df09f223f67f1280148642..15a2b4712441443529ef56b51b65cf3898a7b896 100644
+--- a/Minecraft.Client/EntityTracker.cpp
++++ b/Minecraft.Client/EntityTracker.cpp
+@@ -211,6 +211,14 @@ void EntityTracker::clear(shared_ptr<ServerPlayer> serverPlayer)
+ 	}
+ }
+ 
++void EntityTracker::resendPlayersTo(shared_ptr<ServerPlayer> serverPlayer)
++{
++	for(AUTO_VAR(it, entities.begin()); it != entities.end(); ++it)
++	{
++		(*it)->resendPlayerTo(serverPlayer);
++	}
++}
++
+ // AP added for Vita so the range can be increased once the level starts
+ void EntityTracker::updateMaxRange()
+ {
+@@ -226,4 +234,4 @@ shared_ptr<TrackedEntity> EntityTracker::getTracker(shared_ptr<Entity> e)
+ 		return it->second;
+ 	}
+ 	return nullptr;
+-}
+\ No newline at end of file
++}
+diff --git a/Minecraft.Client/EntityTracker.h b/Minecraft.Client/EntityTracker.h
+index 82b01d07fd88fc5b6239bb8dba87175bd142a2c8..d2737e07479cce70c6cce07df0817b23ee45f844 100644
+--- a/Minecraft.Client/EntityTracker.h
++++ b/Minecraft.Client/EntityTracker.h
+@@ -28,6 +28,7 @@ public:
+     void broadcast(shared_ptr<Entity> e, shared_ptr<Packet> packet);
+     void broadcastAndSend(shared_ptr<Entity> e, shared_ptr<Packet> packet);
+     void clear(shared_ptr<ServerPlayer> serverPlayer);
++	void resendPlayersTo(shared_ptr<ServerPlayer> serverPlayer);
+ 	void updateMaxRange();	// AP added for Vita
+ 
+ 
+diff --git a/Minecraft.Client/Minecraft.Client.vcxproj b/Minecraft.Client/Minecraft.Client.vcxproj
+index 83c0671bb957bcdac8193c81b8a541c260d50962..e0a603ba42ca728aba65e33a13a05168ee57bcdd 100644
+--- a/Minecraft.Client/Minecraft.Client.vcxproj
++++ b/Minecraft.Client/Minecraft.Client.vcxproj
+@@ -1,4 +1,4 @@
+-ï»¿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
+ <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+   <ItemGroup Label="ProjectConfigurations">
+     <ProjectConfiguration Include="ContentPackage_NO_TU|Durango">
+@@ -810,7 +810,7 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+-      <PreprocessorDefinitions>_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;_SECURE_SCL=0;_DEBUG;_XBOX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;NDEBUG;_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;_SECURE_SCL=0;_DEBUG;_XBOX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+@@ -850,7 +850,7 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+-      <PreprocessorDefinitions>_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;%(PreprocessorDefinitions);PROFILE</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;%(PreprocessorDefinitions);PROFILE</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+@@ -899,7 +899,7 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+-      <PreprocessorDefinitions>_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;%(PreprocessorDefinitions);PROFILE</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;%(PreprocessorDefinitions);PROFILE</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+@@ -1053,7 +1053,7 @@ if not exist "$(TargetDir)\savedata" mkdir "$(TargetDir)\savedata"</Command>
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+-      <PreprocessorDefinitions>_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;_SECURE_SCL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <AdditionalIncludeDirectories>PS3\Iggy\include;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+@@ -1282,7 +1282,7 @@ if not exist "$(TargetDir)\savedata" mkdir "$(TargetDir)\savedata"</Command>
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+-      <PreprocessorDefinitions>_LARGE_WORLDS;_DEBUG_MENUS_ENABLED;_DEBUG;_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS;_WINDOWS64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_LARGE_WORLDS;_DEBUG_MENUS_ENABLED;_DEBUG;_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS;_WINDOWS64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <AdditionalIncludeDirectories>Windows64\Iggy\include;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+@@ -1409,7 +1409,7 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+-      <PreprocessorDefinitions>_LARGE_WORLDS;_DEBUG_MENUS_ENABLED;_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS;_WINDOWS64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;NDEBUG;_DEBUG_MENUS_ENABLED;_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS;_WINDOWS64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <AdditionalIncludeDirectories>Windows64\Iggy\include;$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+@@ -1646,7 +1646,7 @@ copy /B /Y $(ProjectDir)Durango\DurangoExtras\xcompress.dll $(LayoutDir)Image\Lo
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+-      <PreprocessorDefinitions>_TU_BUILD;_FINAL_BUILD;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;_CONTENT_PACKAGE;%(PreprocessorDefinitions);</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_TU_BUILD;_FINAL_BUILD;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;_CONTENT_PACKAGE;%(PreprocessorDefinitions);</PreprocessorDefinitions>
+       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+@@ -1689,7 +1689,7 @@ copy /B /Y $(ProjectDir)Durango\DurangoExtras\xcompress.dll $(LayoutDir)Image\Lo
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+-      <PreprocessorDefinitions>_TU_BUILD;_FINAL_BUILD;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;_CONTENT_PACKAGE;%(PreprocessorDefinitions);</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_TU_BUILD;_FINAL_BUILD;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;_CONTENT_PACKAGE;%(PreprocessorDefinitions);</PreprocessorDefinitions>
+       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+@@ -1731,7 +1731,7 @@ copy /B /Y $(ProjectDir)Durango\DurangoExtras\xcompress.dll $(LayoutDir)Image\Lo
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+-      <PreprocessorDefinitions>_TU_BUILD;_FINAL_BUILD;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;_CONTENT_PACKAGE;%(PreprocessorDefinitions);</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_TU_BUILD;_FINAL_BUILD;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_XBOX;_CONTENT_PACKAGE;%(PreprocessorDefinitions);</PreprocessorDefinitions>
+       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+@@ -1773,7 +1773,7 @@ copy /B /Y $(ProjectDir)Durango\DurangoExtras\xcompress.dll $(LayoutDir)Image\Lo
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+-      <PreprocessorDefinitions>_FINAL_BUILD;_CONTENT_PACKAGE;NDEBUG;_ITERATOR_DEBUG_LEVEL=0;_XBOX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_FINAL_BUILD;_CONTENT_PACKAGE;NDEBUG;_ITERATOR_DEBUG_LEVEL=0;_XBOX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+@@ -4389,6 +4389,9 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Durango'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|Durango'">true</ExcludedFromBuild>
+     </ClInclude>
++    <ClInclude Include="Common\Network\Relay\NetworkPlayerRelay.h" />
++    <ClInclude Include="Common\Network\Relay\PlatformNetworkManagerRelay.h" />
++    <ClInclude Include="Common\Network\Relay\RelayTransport.h" />
+     <ClInclude Include="Common\Network\SessionInfo.h" />
+     <ClInclude Include="Common\Network\Sony\NetworkPlayerSony.h">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Durango'">true</ExcludedFromBuild>
+@@ -21586,6 +21589,9 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Durango'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|Durango'">true</ExcludedFromBuild>
+     </ClCompile>
++    <ClCompile Include="Common\Network\Relay\NetworkPlayerRelay.cpp" />
++    <ClCompile Include="Common\Network\Relay\PlatformNetworkManagerRelay.cpp" />
++    <ClCompile Include="Common\Network\Relay\RelayTransport.cpp" />
+     <ClCompile Include="Common\Network\Sony\NetworkPlayerSony.cpp">
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Durango'">true</ExcludedFromBuild>
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+@@ -36732,20 +36738,20 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
+       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseForArt|PSVita'">true</ExcludedFromBuild>
+     </Object>
+   </ItemGroup>
+-  <ItemGroup>
++  <ItemGroup Condition="'$(Platform)'=='Durango'">
+     <SDKReference Include="Xbox GameChat API, Version=8.0" />
+     <SDKReference Include="Xbox Services API, Version=8.0" />
+   </ItemGroup>
+-  <ItemGroup>
++  <ItemGroup Condition="'$(Platform)'=='Durango'">
+     <Reference Include="windows.xbox.networking.realtimesession">
+       <HintPath>Durango\Network\windows.xbox.networking.realtimesession.winmd</HintPath>
+       <IsWinMDFile>true</IsWinMDFile>
+     </Reference>
+   </ItemGroup>
+-  <ItemGroup>
++  <ItemGroup Condition="'$(Platform)'=='Durango'">
+     <AppxManifest Include="Durango\Autogenerated.appxmanifest" />
+   </ItemGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+   <ImportGroup Label="ExtensionTargets">
+   </ImportGroup>
+-</Project>
+\ No newline at end of file
++</Project>
+diff --git a/Minecraft.Client/Minecraft.Client.vcxproj.filters b/Minecraft.Client/Minecraft.Client.vcxproj.filters
+index 21b93eca1cb471fb880cf484676ceaedf5e33fdb..ed2661b0beaa7416d253c81e8601efa5723e98d8 100644
+--- a/Minecraft.Client/Minecraft.Client.vcxproj.filters
++++ b/Minecraft.Client/Minecraft.Client.vcxproj.filters
+@@ -1,4 +1,4 @@
+-ï»¿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
+ <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+   <ItemGroup>
+     <Filter Include="Source Files">
+@@ -3106,6 +3106,15 @@
+     <ClInclude Include="Common\Network\PlatformNetworkManagerStub.h">
+       <Filter>Common\Source Files\Network</Filter>
+     </ClInclude>
++    <ClInclude Include="Common\Network\Relay\NetworkPlayerRelay.h">
++      <Filter>Common\Source Files\Network</Filter>
++    </ClInclude>
++    <ClInclude Include="Common\Network\Relay\PlatformNetworkManagerRelay.h">
++      <Filter>Common\Source Files\Network</Filter>
++    </ClInclude>
++    <ClInclude Include="Common\Network\Relay\RelayTransport.h">
++      <Filter>Common\Source Files\Network</Filter>
++    </ClInclude>
+     <ClInclude Include="Xbox\Network\NetworkPlayerXbox.h">
+       <Filter>Xbox\Source Files\Network</Filter>
+     </ClInclude>
+@@ -5187,6 +5196,15 @@
+     <ClCompile Include="Common\Network\PlatformNetworkManagerStub.cpp">
+       <Filter>Common\Source Files\Network</Filter>
+     </ClCompile>
++    <ClCompile Include="Common\Network\Relay\NetworkPlayerRelay.cpp">
++      <Filter>Common\Source Files\Network</Filter>
++    </ClCompile>
++    <ClCompile Include="Common\Network\Relay\PlatformNetworkManagerRelay.cpp">
++      <Filter>Common\Source Files\Network</Filter>
++    </ClCompile>
++    <ClCompile Include="Common\Network\Relay\RelayTransport.cpp">
++      <Filter>Common\Source Files\Network</Filter>
++    </ClCompile>
+     <ClCompile Include="Xbox\Network\NetworkPlayerXbox.cpp">
+       <Filter>Xbox\Source Files\Network</Filter>
+     </ClCompile>
+@@ -6011,4 +6029,4 @@
+   <ItemGroup>
+     <Xml Include="Durango\manifest.xml" />
+   </ItemGroup>
+-</Project>
+\ No newline at end of file
++</Project>
+diff --git a/Minecraft.Client/PS3/Leaderboards/PS3LeaderboardManager.cpp b/Minecraft.Client/PS3/Leaderboards/PS3LeaderboardManager.cpp
+index 38380bfb496db452024bc57fd1a1e17d0e694816..a434131e9c68fd35d59aed3af52eabaee1d0c376 100644
+--- a/Minecraft.Client/PS3/Leaderboards/PS3LeaderboardManager.cpp
++++ b/Minecraft.Client/PS3/Leaderboards/PS3LeaderboardManager.cpp
+@@ -650,6 +650,12 @@ void PS3LeaderboardManager::Tick()
+ 
+ bool PS3LeaderboardManager::OpenSession()
+ {
++#if defined(CONSOLE_LEGACY_RELAY)
++	// Relay sessions do not use PSN score services. Starting this worker while
++	// signed out makes it retry sceNpManagerGetNpId continuously in RPCS3.
++	m_openSessions++;
++	return true;
++#endif
+ 	if (m_openSessions == 0)
+ 	{
+ 		if (m_threadScoreboard == NULL)
+@@ -673,6 +679,13 @@ bool PS3LeaderboardManager::OpenSession()
+ 
+ void PS3LeaderboardManager::CloseSession()
+ {
++#if defined(CONSOLE_LEGACY_RELAY)
++	if (m_openSessions > 0)
++	{
++		m_openSessions--;
++	}
++	return;
++#endif
+ 	m_openSessions--;
+ 
+ 	if (m_openSessions == 0)	app.DebugPrintf("[LeaderboardManager] CloseSession(): Quitting sceNpScore utility.\n");
+@@ -1045,4 +1058,4 @@ void PS3LeaderboardManager::fillReadScoreStruct(ReadScore &out, SceNpScoreCommen
+ bool PS3LeaderboardManager::SortByRank(const ReadScore &lhs, const ReadScore &rhs)
+ {
+ 	return lhs.m_rank < rhs.m_rank;
+-}
+\ No newline at end of file
++}
+diff --git a/Minecraft.Client/PS3/PS3_PlayerUID.cpp b/Minecraft.Client/PS3/PS3_PlayerUID.cpp
+index 8256ac21b3c882480c303c5d3aad841c889f0ea7..3ece4730be00b4009141b80472ff1ce175f2a699 100644
+--- a/Minecraft.Client/PS3/PS3_PlayerUID.cpp
++++ b/Minecraft.Client/PS3/PS3_PlayerUID.cpp
+@@ -5,6 +5,26 @@
+ #include "PS3_PlayerUID.h"
+ #include "..\Minecraft.World\StringHelpers.h"
+ 
++static void getCurrentMacAddress(uint8_t *address)
++{
++	CellNetCtlInfo info;
++	int err = cellNetCtlGetInfo(CELL_NET_CTL_INFO_ETHER_ADDR, &info);
++	if(err == CELL_OK)
++	{
++		memcpy(address, info.ether_addr.data, CELL_NET_CTL_ETHER_ADDR_LEN);
++		return;
++	}
++
++#ifdef CONSOLE_LEGACY_RELAY
++	// RPCS3 can provide networking without exposing CELL_NET_CTL_INFO_ETHER_ADDR.
++	static const uint8_t relayMac[CELL_NET_CTL_ETHER_ADDR_LEN] = { 0x02, 0x4c, 0x43, 0x45, 0x50, 0x33 };
++	memcpy(address, relayMac, CELL_NET_CTL_ETHER_ADDR_LEN);
++#else
++	assert(err == CELL_OK);
++	memset(address, 0, CELL_NET_CTL_ETHER_ADDR_LEN);
++#endif
++}
++
+ std::size_t PlayerUID::Hash::operator()(const PlayerUID& k) const
+ {
+ 	//  now only hashing against the local ID, as this is now unique across the network too.
+@@ -87,13 +107,7 @@ bool PlayerUID::operator!=(const PlayerUID& rhs)
+ 
+ void PlayerUID::setCurrentMacAddress()
+ {
+-	// get the mac address of this machine
+-	CellNetCtlInfo info;
+-	int err = cellNetCtlGetInfo(CELL_NET_CTL_INFO_ETHER_ADDR, &info);
+-	assert(err == CELL_OK);
+-
+-	for(int i=0;i<CELL_NET_CTL_ETHER_ADDR_LEN; i++)
+-		m_macAddress[i] = info.ether_addr.data[i];
++	getCurrentMacAddress(m_macAddress);
+ }
+ 
+ std::wstring g_testStringW;
+@@ -144,14 +158,12 @@ bool PlayerUID::isPrimaryUser() const /* only true if we're on the local machine
+ 	if(m_quadrant != 0)
+ 		return false;
+ 
+-	// get the mac address of this machine
+-	CellNetCtlInfo info;
+-	int err = cellNetCtlGetInfo(CELL_NET_CTL_INFO_ETHER_ADDR, &info);
+-	assert(err == CELL_OK);
++	uint8_t currentMacAddress[CELL_NET_CTL_ETHER_ADDR_LEN];
++	getCurrentMacAddress(currentMacAddress);
+ 	bool macIsLocal = true;
+ 	for(int i=0;i<CELL_NET_CTL_ETHER_ADDR_LEN; i++)
+ 	{
+-		if(m_macAddress[i] != info.ether_addr.data[i])
++		if(m_macAddress[i] != currentMacAddress[i])
+ 			macIsLocal = false;
+ 	}
+ 	return macIsLocal;		// only true if we're on the local machine and signed into the first quadrant
+@@ -194,4 +206,3 @@ GameSessionUID& GameSessionUID::operator=(const PlayerUID& rhs)
+ 	m_bSignedIntoPSN = rhs.isSignedIntoPSN();
+ 	return *this;
+ }
+-
+diff --git a/Minecraft.Client/PendingConnection.cpp b/Minecraft.Client/PendingConnection.cpp
+index 841863b61291a00057529fb7c5fb12a4b5ad50b7..cc1cacf65f5bcd30e2e8902ffff23003cd012320 100644
+--- a/Minecraft.Client/PendingConnection.cpp
++++ b/Minecraft.Client/PendingConnection.cpp
+@@ -207,6 +207,17 @@ void PendingConnection::handleAcceptedLogin(shared_ptr<LoginPacket> packet)
+ 		return;
+ 	}
+ 
++#if defined(CONSOLE_LEGACY_RELAY)
++	// Platform profile IDs are not comparable across Xbox, PlayStation and PC.
++	// Use the relay player's canonical ID for all server-side player identity.
++	INetworkPlayer *relayPlayer = connection->getSocket()->getPlayer();
++	if(relayPlayer != NULL)
++	{
++		packet->m_offlineXuid = relayPlayer->GetUID();
++		packet->m_onlineXuid = relayPlayer->GetUID();
++	}
++#endif
++
+ 	// Guests use the online xuid, everyone else uses the offline one
+ 	PlayerUID playerXuid = packet->m_offlineXuid;
+ 	if(playerXuid == INVALID_XUID) playerXuid = packet->m_onlineXuid;
+@@ -230,7 +241,7 @@ void PendingConnection::onDisconnect(DisconnectPacket::eDisconnectReason reason,
+ void PendingConnection::handleGetInfo(shared_ptr<GetInfoPacket> packet)
+ {
+ 	//try {
+-	//String message = server->motd + "§" + server->players->getPlayerCount() + "§" + server->players->getMaxPlayers();
++	//String message = server->motd + "Â§" + server->players->getPlayerCount() + "Â§" + server->players->getMaxPlayers();
+ 	//connection->send(new DisconnectPacket(message));
+ 	connection->send(shared_ptr<DisconnectPacket>(new DisconnectPacket(DisconnectPacket::eDisconnect_ServerFull) ) );
+ 	connection->sendAndQuit();
+@@ -266,4 +277,4 @@ wstring PendingConnection::getName()
+ bool PendingConnection::isServerPacketListener()
+ {
+ 	return true;
+-}
+\ No newline at end of file
++}
+diff --git a/Minecraft.Client/PlayerConnection.cpp b/Minecraft.Client/PlayerConnection.cpp
+index f0e538a830bdda7687b60e7a9b200022c91f456b..60dbee3fab61f40101050e5b39818b085d77bf2d 100644
+--- a/Minecraft.Client/PlayerConnection.cpp
++++ b/Minecraft.Client/PlayerConnection.cpp
+@@ -593,6 +593,7 @@ void PlayerConnection::send(shared_ptr<Packet> packet)
+ {
+ 	if( connection->getSocket() != NULL )
+ 	{
++#if !defined(CONSOLE_LEGACY_RELAY)
+ 		if( !server->getPlayers()->canReceiveAllPackets( player ) )
+ 		{
+ 			// Check if we are allowed to send this packet type
+@@ -602,6 +603,7 @@ void PlayerConnection::send(shared_ptr<Packet> packet)
+ 				return;
+ 			}
+ 		}
++#endif
+ 		connection->send(packet);
+ 	}
+ }
+@@ -611,6 +613,7 @@ void PlayerConnection::queueSend(shared_ptr<Packet> packet)
+ {
+ 	if( connection->getSocket() != NULL )
+ 	{
++#if !defined(CONSOLE_LEGACY_RELAY)
+ 		if( !server->getPlayers()->canReceiveAllPackets( player ) )
+ 		{
+ 			// Check if we are allowed to send this packet type
+@@ -620,6 +623,7 @@ void PlayerConnection::queueSend(shared_ptr<Packet> packet)
+ 				return;
+ 			}
+ 		}
++#endif
+ 		connection->queueSend(packet);
+ 	}
+ }
+diff --git a/Minecraft.Client/PlayerList.cpp b/Minecraft.Client/PlayerList.cpp
+index 7921cbf89078ddee7b69f1e15c02c18363513bbf..e5a0f05d317c9adb6ce2bd293186ad91d78d1108 100644
+--- a/Minecraft.Client/PlayerList.cpp
++++ b/Minecraft.Client/PlayerList.cpp
+@@ -220,7 +220,7 @@ void PlayerList::placeNewPlayer(Connection *connection, shared_ptr<ServerPlayer>
+         sendLevelInfo(player, level);
+ 
+         // 4J-PB - removed, since it needs to be localised in the language the client is in
+-		//server->players->broadcastAll( shared_ptr<ChatPacket>( new ChatPacket(L"§e" + playerEntity->name + L" joined the game.") ) );
++		//server->players->broadcastAll( shared_ptr<ChatPacket>( new ChatPacket(L"Â§e" + playerEntity->name + L" joined the game.") ) );
+ 		broadcastAll( shared_ptr<ChatPacket>( new ChatPacket(player->name, ChatPacket::e_ChatPlayerJoinedGame) ) );
+ 
+ 		MemSect(14);
+@@ -242,6 +242,12 @@ void PlayerList::placeNewPlayer(Connection *connection, shared_ptr<ServerPlayer>
+ 
+         player->initMenu();
+ 
++#if defined(CONSOLE_LEGACY_RELAY)
++		// A console can finish processing its world setup after the tracker's first
++		// AddPlayer packet. Replay the visible player snapshot after login setup.
++		level->getTracker()->resendPlayersTo(player);
++#endif
++
+ 		// If we are joining at the same time as someone in the end on this system is travelling through the win portal,
+ 		// then we should set our wonGame flag to true so that respawning works when the EndPoem is closed
+ 		INetworkPlayer *thisPlayer = player->connection->getNetworkPlayer();
+@@ -380,7 +386,7 @@ void PlayerList::add(shared_ptr<ServerPlayer> player)
+ 	// Some code from here has been moved to the above validatePlayerSpawnPosition function
+ 
+ 	// 4J Stu - Swapped these lines about so that we get the chunk visiblity packet way ahead of all the add tracked entity packets
+-	// Fix for #9169 - ART : Sign text is replaced with the words “Awaiting approval”.
++	// Fix for #9169 - ART : Sign text is replaced with the words â€œAwaiting approvalâ€.
+     changeDimension(player, NULL);
+     level->addEntity(player);
+ 
+diff --git a/Minecraft.Client/TrackedEntity.cpp b/Minecraft.Client/TrackedEntity.cpp
+index 70f25c93e419b9e268af48e7a5f6dafb8fd8cc94..165c5104609abaa076856cd5328df73ef77389b7 100644
+--- a/Minecraft.Client/TrackedEntity.cpp
++++ b/Minecraft.Client/TrackedEntity.cpp
+@@ -126,11 +126,21 @@ void TrackedEntity::tick(EntityTracker *tracker, vector<shared_ptr<Player> > *pl
+ 
+ 				bool rot = abs(yRota) >= TOLERANCE_LEVEL || abs(xRota) >= TOLERANCE_LEVEL;
+ 
++				bool relayPlayer = false;
++#if defined(CONSOLE_LEGACY_RELAY)
++				// Compact relative movement packets have proven unreliable across the
++				// Xbox 360/PS3/PC ABI boundary. Use the regular packet layout for
++				// players and periodically send an absolute correction so one bad
++				// delta cannot leave a remote player frozen indefinitely.
++				relayPlayer = (e->GetType() & eTYPE_PLAYER) == eTYPE_PLAYER;
++#endif
++
+ 				if (xa < -128 || xa >= 128 || ya < -128 || ya >= 128 || za < -128 || za >= 128
+ 					// 4J Stu - I fixed the initialisation of teleportDelay in the ctor, but we managed this far without out
+ 						// and would prefer not to have all the extra traffix so ignore it
+ 							// 4J Stu - Fix for #9579 - GAMEPLAY: Boats with a player in them slowly sink under the water over time, and with no player in them they float into the sky.
+ 								|| (e->GetType() == eTYPE_BOAT && teleportDelay > 20 * 20)
++								|| (relayPlayer && teleportDelay > 20 * 2)
+ 								)
+ 				{
+ 					teleportDelay = 0;
+@@ -144,7 +154,8 @@ void TrackedEntity::tick(EntityTracker *tracker, vector<shared_ptr<Player> > *pl
+ 					if (pos && rot)
+ 					{
+ 						// 4J If the movement is small enough, and there's no xrot, then use the new smaller packets
+-						if( ( xa >= -16 ) && ( xa <= 15 ) &&
++						if( !relayPlayer &&
++							( xa >= -16 ) && ( xa <= 15 ) &&
+ 							( za >= -16 ) && ( za <= 15 ) &&
+ 							( ya >= -32 ) && ( ya <= 31 ) &&
+ 							( xRota == 0 ))
+@@ -174,7 +185,8 @@ void TrackedEntity::tick(EntityTracker *tracker, vector<shared_ptr<Player> > *pl
+ 					else if (pos)
+ 					{
+ 						// 4J If the movement is small enough, then use the new smaller packets
+-						if( ( xa >= -8 ) && ( xa <= 7 ) &&
++						if( !relayPlayer &&
++							( xa >= -8 ) && ( xa <= 7 ) &&
+ 							( za >= -8 ) && ( za <= 7 ) &&
+ 							( ya >= -16 ) && ( ya <= 15 ) )
+ 						{
+@@ -183,7 +195,8 @@ void TrackedEntity::tick(EntityTracker *tracker, vector<shared_ptr<Player> > *pl
+ 							c1a++;
+ 						}
+ 
+-						else if( ( xa >= -16 ) && ( xa <= 15 ) &&
++						else if( !relayPlayer &&
++							( xa >= -16 ) && ( xa <= 15 ) &&
+ 							( za >= -16 ) && ( za <= 15 ) &&
+ 							( ya >= -32 ) && ( ya <= 31 ) )
+ 						{
+@@ -200,7 +213,7 @@ void TrackedEntity::tick(EntityTracker *tracker, vector<shared_ptr<Player> > *pl
+ 					else if (rot)
+ 					{
+ 						// 4J If there's no x rotation, then use the new smaller packet type
+-						if( xRota == 0 )
++						if( !relayPlayer && xRota == 0 )
+ 						{
+ 							// Clamp rotations that are too big
+ 							if( yRota < -16 )
+@@ -546,6 +559,25 @@ void TrackedEntity::updatePlayer(EntityTracker *tracker, shared_ptr<ServerPlayer
+ 
+ }
+ 
++void TrackedEntity::resendPlayerTo(shared_ptr<ServerPlayer> sp)
++{
++	if(sp == NULL || sp == e || e->GetType() != eTYPE_SERVERPLAYER)
++	{
++		return;
++	}
++
++	// Only replay entities already considered visible. This avoids extending the
++	// normal tracking range while making the initial relay snapshot reliable.
++	if(seenBy.find(sp) != seenBy.end() && sp->connection != NULL)
++	{
++		sp->connection->send(getAddEntityPacket());
++		if(!e->getEntityData()->isEmpty())
++		{
++			sp->connection->send(shared_ptr<SetEntityDataPacket>(new SetEntityDataPacket(e->entityId, e->getEntityData(), true)));
++		}
++	}
++}
++
+ bool TrackedEntity::canBySeenBy(shared_ptr<ServerPlayer> player)
+ {
+ 	// 4J - for some reason this isn't currently working, and is causing players to not appear until we are really close to them. Not sure
+diff --git a/Minecraft.Client/TrackedEntity.h b/Minecraft.Client/TrackedEntity.h
+index 9fb564a4d2de460b6c761019ed4cc27243c8c9b2..0e671ae8dd162366ac274521afa53ff8e2cc9b9c 100644
+--- a/Minecraft.Client/TrackedEntity.h
++++ b/Minecraft.Client/TrackedEntity.h
+@@ -57,6 +57,7 @@ private:
+ public:
+     void updatePlayer(EntityTracker *tracker, shared_ptr<ServerPlayer> sp);
+     void updatePlayers(EntityTracker *tracker, vector<shared_ptr<Player> > *players);
++	void resendPlayerTo(shared_ptr<ServerPlayer> sp);
+ private:
+ 	void sendEntityData(shared_ptr<PlayerConnection> conn);
+ 	shared_ptr<Packet> getAddEntityPacket();
+diff --git a/Minecraft.World/BlockRegionUpdatePacket.cpp b/Minecraft.World/BlockRegionUpdatePacket.cpp
+index d85321a508bda6db3de7ab1febe15892bd2d6a7a..de70d1dea5feba24eddd0b5d955773d8373f623a 100644
+--- a/Minecraft.World/BlockRegionUpdatePacket.cpp
++++ b/Minecraft.World/BlockRegionUpdatePacket.cpp
+@@ -10,8 +10,6 @@
+ #include "DataLayer.h"
+ #include "Dimension.h"
+ 
+-
+-
+ BlockRegionUpdatePacket::~BlockRegionUpdatePacket()
+ {
+ 	delete [] buffer.data;
+@@ -67,6 +65,14 @@ BlockRegionUpdatePacket::BlockRegionUpdatePacket(int x, int y, int z, int xs, in
+ 	}
+ 	else
+ 	{
++		#if defined(CONSOLE_LEGACY_RELAY)
++		// Relay peers can run on platforms with incompatible native codecs
++		// (Windows zlib versus Xbox 360 LZX), so use one raw chunk format.
++		buffer = byteArray(rawBuffer.length);
++		memcpy(buffer.data, rawBuffer.data, rawBuffer.length);
++		size = rawBuffer.length;
++		delete [] rawBuffer.data;
++		#else
+ 		// We don't know how this will compress - just make a fixed length buffer to initially decompress into
+ 		// Some small sets of blocks can end up compressing into something bigger than their source
+ 		unsigned char *ucTemp = new unsigned char[(256 * 16 * 16 * 5)/2];
+@@ -80,6 +86,7 @@ BlockRegionUpdatePacket::BlockRegionUpdatePacket(int x, int y, int z, int xs, in
+ 		buffer = byteArray(ucTemp2,inputSize);
+ 		delete [] rawBuffer.data;
+ 		size = inputSize;
++		#endif
+ 	}
+ }
+ 
+@@ -114,7 +121,20 @@ void BlockRegionUpdatePacket::read(DataInputStream *dis) //throws IOException
+ 
+ 		if( success )
+ 		{
++			#if defined(CONSOLE_LEGACY_RELAY)
++			if(size == (unsigned int)bufferSize)
++			{
++				memcpy(buffer.data, compressedBuffer.data, size);
++				outputSize = size;
++			}
++			else
++			{
++				app.DebugPrintf("Relay chunk size mismatch: expected %d, received %d\n", bufferSize, size);
++				assert(false);
++			}
++			#else
+ 			Compression::getCompression()->DecompressLZXRLE( buffer.data, &outputSize, compressedBuffer.data, size);
++			#endif
+ 		}
+ 		else
+ 		{
+@@ -154,4 +174,3 @@ int BlockRegionUpdatePacket::getEstimatedSize()
+ {
+ 	return 17 + size;
+ }
+-
+diff --git a/Minecraft.World/DataInputStream.cpp b/Minecraft.World/DataInputStream.cpp
+index 2291bf485722cfe1f1750bc2818db33b8e766515..06db49e045e0b300b1ae7723f5a8fe7d177e5d28 100644
+--- a/Minecraft.World/DataInputStream.cpp
++++ b/Minecraft.World/DataInputStream.cpp
+@@ -512,7 +512,16 @@ int DataInputStream::readUTFChar()
+ PlayerUID DataInputStream::readPlayerUID()
+ {
+ 	PlayerUID returnValue;
+-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
++#if defined(CONSOLE_LEGACY_RELAY) && defined(__PS3__)
++	__uint64 wireId = (__uint64)readLong();
++	if (wireId != 0)
++	{
++		wchar_t playerText[64];
++		swprintf(playerText, 64, L"N_%012llx_%08u_",
++			wireId & 0xffffffffffffULL, (unsigned int)(wireId & 0xffffffff));
++		returnValue = PlayerUID(playerText);
++	}
++#elif defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+ 	for(int idPos=0;idPos<sizeof(PlayerUID); idPos++)
+ 		((char*)&returnValue)[idPos] = readByte();
+ #elif defined(_DURANGO)
+@@ -543,4 +552,4 @@ __int64 DataInputStream::skip(__int64 n)
+ int DataInputStream::skipBytes(int n)
+ {
+ 	return skip(n);
+-}
+\ No newline at end of file
++}
+diff --git a/Minecraft.World/DataOutputStream.cpp b/Minecraft.World/DataOutputStream.cpp
+index 8e277c23362c51146ccc6a261e4ee99769a56ab2..7974341ac1cd3f0c81817d877a1d0404a3fd4cf2 100644
+--- a/Minecraft.World/DataOutputStream.cpp
++++ b/Minecraft.World/DataOutputStream.cpp
+@@ -257,7 +257,27 @@ void DataOutputStream::writeUTF(const wstring& str)
+ // 4J Added
+ void DataOutputStream::writePlayerUID(PlayerUID player)
+ {
+-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
++#if defined(CONSOLE_LEGACY_RELAY) && defined(__PS3__)
++	PlayerUID invalidPlayer;
++	if (player == invalidPlayer)
++	{
++		writeLong(0);
++		return;
++	}
++
++	const wstring playerText = player.toString();
++	__uint64 wireId = 1469598103934665603ULL;
++	for (unsigned int i = 0; i < playerText.length(); ++i)
++	{
++		unsigned int value = (unsigned int)playerText[i];
++		for (int byteIndex = 0; byteIndex < 4; ++byteIndex)
++		{
++			wireId ^= (value >> (byteIndex * 8)) & 0xff;
++			wireId *= 1099511628211ULL;
++		}
++	}
++	writeLong((__int64)wireId);
++#elif defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+ 	for(int idPos=0;idPos<sizeof(PlayerUID); idPos++)
+ 		writeByte(((char*)&player)[idPos]);
+ #elif defined(_DURANGO)
+@@ -265,4 +285,4 @@ void DataOutputStream::writePlayerUID(PlayerUID player)
+ #else
+ 	writeLong(player);
+ #endif // PS3
+-}
+\ No newline at end of file
++}
+diff --git a/Minecraft.World/LevelChunk.cpp b/Minecraft.World/LevelChunk.cpp
+index 823c7c4cdb7ddc92305e698bda65dc09a6ca2122..fd5bdde92312a13cf63665e90941f1efb52f3375 100644
+--- a/Minecraft.World/LevelChunk.cpp
++++ b/Minecraft.World/LevelChunk.cpp
+@@ -1815,8 +1815,14 @@ int LevelChunk::setBlocksAndData(byteArray data, int x0, int y0, int z0, int x1,
+ 		if(y0 < Level::COMPRESSED_CHUNK_SECTION_HEIGHT) p += lowerSkyLight->setDataRegion( data, x0, y0, z0, x1, min(compressedHeight, y1), z1, p );
+ 		if(y1 > Level::COMPRESSED_CHUNK_SECTION_HEIGHT) p += upperSkyLight->setDataRegion( data, x0, max(y0-compressedHeight,0), z0, x1, y1-Level::COMPRESSED_CHUNK_SECTION_HEIGHT, z1, p );
+ 
+-		memcpy(biomes.data, &data.data[p],biomes.length);
+-		p += biomes.length;
++		// Full chunk packets always store the 16x16 biome map at the tail of the
++		// payload. Sparse storage byte counts can differ between platforms.
++		int biomeOffset = data.length - biomes.length;
++		if(biomeOffset >= 0)
++		{
++			memcpy(biomes.data, &data.data[biomeOffset], biomes.length);
++			p = data.length;
++		}
+ 	}
+ 	else
+ 	{
+diff --git a/Minecraft.World/Minecraft.World.vcxproj b/Minecraft.World/Minecraft.World.vcxproj
+index 5dd3bc6b6926889091b93b3e25ebee39ec30b841..ab740a48568a183f23a2616adbb8d5a3723e710f 100644
+--- a/Minecraft.World/Minecraft.World.vcxproj
++++ b/Minecraft.World/Minecraft.World.vcxproj
+@@ -1,4 +1,4 @@
+-ï»¿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
+ <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+   <ItemGroup Label="ProjectConfigurations">
+     <ProjectConfiguration Include="ContentPackage_NO_TU|Durango">
+@@ -737,7 +737,7 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+-      <PreprocessorDefinitions>_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;_SECURE_SCL=0;_DEBUG;_XBOX;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;NDEBUG;_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;_SECURE_SCL=0;_DEBUG;_XBOX;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+       <ShowIncludes>false</ShowIncludes>
+@@ -760,7 +760,7 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+-      <PreprocessorDefinitions>_DEBUG_MENUS_ENABLED;NDEBUG;_XBOX;_LIB;%(PreprocessorDefinitions);PROFILE</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_DEBUG_MENUS_ENABLED;NDEBUG;_XBOX;_LIB;%(PreprocessorDefinitions);PROFILE</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+       <ShowIncludes>false</ShowIncludes>
+@@ -871,7 +871,7 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+-      <PreprocessorDefinitions>_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;_SECURE_SCL=0;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;_DEBUG_MENUS_ENABLED;_ITERATOR_DEBUG_LEVEL=0;_SECURE_SCL=0;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+       <ShowIncludes>false</ShowIncludes>
+@@ -1051,7 +1051,7 @@
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <PrecompiledHeaderOutputFile>$(OutDir)$(ProjectName).pch</PrecompiledHeaderOutputFile>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+-      <PreprocessorDefinitions>_LARGE_WORLDS;_DEBUG_MENUS_ENABLED;_LIB;_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS;_WINDOWS64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>CONSOLE_LEGACY_RELAY;NDEBUG;_DEBUG_MENUS_ENABLED;_LIB;_CRT_NON_CONFORMING_SWPRINTFS;_CRT_SECURE_NO_WARNINGS;_WINDOWS64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <CallAttributedProfiling>Disabled</CallAttributedProfiling>
+       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+       <ShowIncludes>false</ShowIncludes>
+@@ -3957,10 +3957,10 @@
+     </ClCompile>
+     <ClCompile Include="ZoomLayer.cpp" />
+   </ItemGroup>
+-  <ItemGroup>
++  <ItemGroup Condition="'$(Platform)'=='Durango'">
+     <SDKReference Include="Xbox Services API, Version=8.0" />
+   </ItemGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+   <ImportGroup Label="ExtensionTargets">
+   </ImportGroup>
+-</Project>
+\ No newline at end of file
++</Project>
+diff --git a/Minecraft.World/Player.cpp b/Minecraft.World/Player.cpp
+index 05d9774316c4691d84fe97e2963c4483fd4dff96..0ac601cd4a3af755ee411d7cf0a0d2b0a42ebd00 100644
+--- a/Minecraft.World/Player.cpp
++++ b/Minecraft.World/Player.cpp
+@@ -2557,18 +2557,32 @@ int Player::getTexture()
+ 
+ int Player::hash_fnct(const shared_ptr<Player> k)
+ {
++#if defined(CONSOLE_LEGACY_RELAY)
++	// Relay peers may use the same profile name. Tracking containers must still
++	// retain a separate entry for every connected player object.
++	uintptr_t identity = reinterpret_cast<uintptr_t>(k.get());
++#if defined(_WIN64)
++	identity ^= identity >> 32;
++#endif
++	return (int)identity;
++#else
+ 	// TODO 4J Stu - Should we just be using the pointers and hashing them?
+ #ifdef __PS3__
+ 	return (int)boost::hash_value( k->name ); // 4J Stu - Names are completely unique?
+ #else
+-	return (int)std::hash_value( k->name ); // 4J Stu - Names are completely unique?
++	return (int)std::hash<wstring>()(k->name); // 4J Stu - Names are completely unique?
+ #endif //__PS3__
++#endif
+ }
+ 
+ bool Player::eq_test(const shared_ptr<Player> x, const shared_ptr<Player> y)
+ {
++#if defined(CONSOLE_LEGACY_RELAY)
++	return x.get() == y.get();
++#else
+ 	// TODO 4J Stu - Should we just be using the pointers and comparing them for equality?
+ 	return x->name.compare( y->name ) == 0; // 4J Stu - Names are completely unique?
++#endif
+ }
+ 
+ 
+diff --git a/Minecraft.World/ThreadName.cpp b/Minecraft.World/ThreadName.cpp
+index f41beb61d2b976dee9fdf7dee9d474024bc73ca6..9099b453b7c585e54d680408790fb7acd3f661bf 100644
+--- a/Minecraft.World/ThreadName.cpp
++++ b/Minecraft.World/ThreadName.cpp
+@@ -28,7 +28,7 @@ void SetThreadName( DWORD dwThreadID, LPCSTR szThreadName )
+ 	{
+ 	}
+ #endif
+-#ifdef _XBOX
++#if defined(_XBOX) && !defined(CONSOLE_LEGACY_RELAY)
+     __try
+     {
+         RaiseException( 0x406D1388, 0, sizeof(info)/sizeof(DWORD), (DWORD *)&info );
