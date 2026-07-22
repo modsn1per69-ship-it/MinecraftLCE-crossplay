@@ -87,16 +87,43 @@ internal static class RelayHubIntegrationTest
         string relayHost = args.Length > 1 ? args[0] : "127.0.0.1";
         int port = args.Length > 1 ? Int32.Parse(args[1])
             : args.Length > 0 ? Int32.Parse(args[0]) : 61001;
-        const string handshake = "local-test 584111F7-1.0.10.0-lce1.2.3-net495-proto39 V2";
+        string token = args.Length > 2 ? args[2] : "";
+        string authentication = String.IsNullOrEmpty(token) ? "" : " " + token;
+        string handshake = "local-test 584111F7-1.0.10.0-lce1.2.3-net495-proto39 V2" + authentication;
+        string secondHandshake = "second-test 584111F7-1.0.10.0-lce1.2.3-net495-proto39 V2" + authentication;
+
+        if (!String.IsNullOrEmpty(token))
+        {
+            TcpClient unauthorized = new TcpClient(relayHost, port);
+            NetworkStream unauthorizedStream = unauthorized.GetStream();
+            WriteLine(unauthorizedStream,
+                "JOIN local-test 584111F7-1.0.10.0-lce1.2.3-net495-proto39 V2 " + token + "-wrong");
+            Require(ReadLine(unauthorizedStream) == "ERROR unauthorized",
+                "server accepted a client with the wrong access token");
+            unauthorized.Close();
+        }
+
         TcpClient host = new TcpClient(relayHost, port);
         NetworkStream hostStream = host.GetStream();
         WriteLine(hostStream, "HOST " + handshake);
         Require(ReadLine(hostStream) == "WAITING", "host did not enter WAITING");
 
+        TcpClient secondHost = new TcpClient(relayHost, port);
+        NetworkStream secondHostStream = secondHost.GetStream();
+        WriteLine(secondHostStream, "HOST " + secondHandshake);
+        Require(ReadLine(secondHostStream) == "WAITING", "second host did not enter WAITING");
+
         TcpClient xbox = new TcpClient(relayHost, port);
         NetworkStream xboxStream = xbox.GetStream();
-        WriteLine(xboxStream, "JOIN local-test 584111F7-1.0.10.0-lce1.2.3-net495-proto39");
-        Require(ReadLine(xboxStream) == "READY", "legacy Xbox client was not upgraded to the hub");
+        if (String.IsNullOrEmpty(token))
+        {
+            WriteLine(xboxStream, "JOIN local-test 584111F7-1.0.10.0-lce1.2.3-net495-proto39");
+        }
+        else
+        {
+            WriteLine(xboxStream, "JOIN " + handshake);
+        }
+        Require(ReadLine(xboxStream) == "READY", "Xbox client was not admitted to the hub");
         Require(ReadLine(hostStream) == "READY", "host was not ready");
         Frame xboxJoin = ReadFrame(hostStream);
         Require(xboxJoin.Type == (byte)'J' && xboxJoin.PeerId == 2, "missing Xbox join frame");
@@ -107,6 +134,23 @@ internal static class RelayHubIntegrationTest
         Require(ReadLine(ps3Stream) == "READY", "PS3 client was not ready");
         Frame ps3Join = ReadFrame(hostStream);
         Require(ps3Join.Type == (byte)'J' && ps3Join.PeerId == 3, "missing PS3 join frame");
+
+        TcpClient secondClient = new TcpClient(relayHost, port);
+        NetworkStream secondClientStream = secondClient.GetStream();
+        WriteLine(secondClientStream, "JOIN " + secondHandshake);
+        Require(ReadLine(secondClientStream) == "READY", "second session client was not ready");
+        Require(ReadLine(secondHostStream) == "READY", "second session host was not ready");
+        Frame secondJoin = ReadFrame(secondHostStream);
+        Require(secondJoin.Type == (byte)'J' && secondJoin.PeerId == 2,
+            "missing second-session join frame");
+
+        byte[] fromSecondSession = Encoding.ASCII.GetBytes("SECOND_SESSION");
+        secondClientStream.Write(fromSecondSession, 0, fromSecondSession.Length);
+        secondClientStream.Flush();
+        Frame secondData = ReadFrame(secondHostStream);
+        Require(secondData.Type == (byte)'D' && secondData.PeerId == 2
+            && Encoding.ASCII.GetString(secondData.Data) == "SECOND_SESSION",
+            "second-session data was not routed to its host");
 
         byte[] fromXbox = Encoding.ASCII.GetBytes("FROM_XBOX");
         xboxStream.Write(fromXbox, 0, fromXbox.Length);
@@ -144,8 +188,12 @@ internal static class RelayHubIntegrationTest
             "Xbox disconnect tore down the remaining hub session");
 
         ps3.Close();
+        secondClient.Close();
+        secondHost.Close();
         host.Close();
-        Console.WriteLine("RELAY_HUB_3_PEER_OK");
+        Console.WriteLine(String.IsNullOrEmpty(token)
+            ? "RELAY_HUB_3_PEER_OK"
+            : "RELAY_HUB_3_PEER_AUTH_OK");
         return 0;
     }
 }

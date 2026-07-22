@@ -160,7 +160,7 @@ bool RelayTransport::ConnectFromEnvironment(const char *roleName)
 	const char *token = getenv("CONSOLE_LEGACY_RELAY_TOKEN");
 #endif
 	char hostBuffer[256];
-	char line[256];
+	char line[512];
 	unsigned short port = RELAY_DEFAULT_PORT;
 
 	if (host == NULL || host[0] == 0)
@@ -218,10 +218,25 @@ bool RelayTransport::ConnectFromEnvironment(const char *roleName)
 	if (mode != NULL && strcmp(mode, "local") == 0)
 	{
 		const char *sessionId = session != NULL && session[0] != 0 ? session : "local-test";
+		const char *accessToken = token != NULL ? token : "";
 #if (defined(__PS3__) && defined(CONSOLE_LEGACY_PSL1GHT)) || defined(__PSVITA__) || defined(__ORBIS__)
-		snprintf(line, sizeof(line), "%s %s %s V2\n", isHost ? "HOST" : "JOIN", sessionId, buildId);
+		if (accessToken[0] != 0)
+		{
+			snprintf(line, sizeof(line), "%s %s %s V2 %s\n", isHost ? "HOST" : "JOIN", sessionId, buildId, accessToken);
+		}
+		else
+		{
+			snprintf(line, sizeof(line), "%s %s %s V2\n", isHost ? "HOST" : "JOIN", sessionId, buildId);
+		}
 #else
-		_snprintf_s(line, sizeof(line), _TRUNCATE, "%s %s %s V2\n", isHost ? "HOST" : "JOIN", sessionId, buildId);
+		if (accessToken[0] != 0)
+		{
+			_snprintf_s(line, sizeof(line), _TRUNCATE, "%s %s %s V2 %s\n", isHost ? "HOST" : "JOIN", sessionId, buildId, accessToken);
+		}
+		else
+		{
+			_snprintf_s(line, sizeof(line), _TRUNCATE, "%s %s %s V2\n", isHost ? "HOST" : "JOIN", sessionId, buildId);
+		}
 #endif
 		line[sizeof(line) - 1] = 0;
 		if (!SendLine(line) || !SetNonBlocking())

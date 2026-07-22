@@ -27,3 +27,52 @@ jobs:
             $blocked | ForEach-Object { Write-Error "Blocked artifact: $($_.FullName)" }
             exit 1
           }
+
+  relay-linux-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build Linux relay
+        run: |
+          dotnet build relay/LegacyCrossplayRelay.csproj --configuration Release
+          dotnet build tests/RelayHubIntegrationTest.csproj --configuration Release
+
+      - name: Validate Compose configuration
+        env:
+          CONSOLE_LEGACY_RELAY_TOKEN: ci-compose-token
+        run: docker compose config --quiet
+
+      - name: Build relay container
+        run: docker build --tag legacy-crossplay-relay:test .
+
+      - name: Start authenticated relay container
+        run: |
+          docker run --detach --name legacy-crossplay-relay-test \
+            --publish 61005:61000 \
+            --env CONSOLE_LEGACY_RELAY_TOKEN=ci-container-token \
+            legacy-crossplay-relay:test
+          for attempt in {1..30}; do
+            if docker logs legacy-crossplay-relay-test 2>&1 | grep -q "listening 0.0.0.0:61000 auth=required"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs legacy-crossplay-relay-test
+          exit 1
+
+      - name: Test authenticated Linux container
+        run: >-
+          dotnet run --project tests/RelayHubIntegrationTest.csproj
+          --configuration Release --no-build --
+          127.0.0.1 61005 ci-container-token
+
+      - name: Stop relay container
+        if: always()
+        run: docker rm --force legacy-crossplay-relay-test || true

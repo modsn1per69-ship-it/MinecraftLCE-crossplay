@@ -6,6 +6,9 @@ The relay PC accepts one host and multiple clients. The game host remains the
 authority for worlds, entities, inventory, and simulation. The relay only
 frames and forwards the game's existing packet stream.
 
+For an authenticated external relay, follow [VPS.md](VPS.md). The local steps
+below remain unchanged and do not require a token.
+
 ```text
 PC game host ----\
 Xbox 360/Xenia ----> LocalRelayServer on TCP 61000

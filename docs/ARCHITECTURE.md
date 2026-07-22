@@ -21,13 +21,19 @@ V2 host:
 
 ```text
 HOST <session-id> <build-id> V2\n
+HOST <session-id> <build-id> V2 <access-token>\n
 ```
 
 V2 client:
 
 ```text
 JOIN <session-id> <build-id> V2\n
+JOIN <session-id> <build-id> V2 <access-token>\n
 ```
+
+The token suffix is optional when server authentication is disabled and
+required when `CONSOLE_LEGACY_RELAY_TOKEN` is configured. Tokens are never
+written to relay logs.
 
 The server returns `WAITING` to a registered host and `READY` when at least one
 matching client joins. Build mismatches receive an error and are disconnected.
@@ -86,13 +92,13 @@ storage byte count.
 
 ## Security model
 
-The included server is a development LAN relay:
+The server has two deployment profiles:
 
-- no encryption
-- no authentication
-- no rate limiting
-- no persistent account or server directory
-- no NAT traversal
-- no Internet exposure hardening
+- Local/LAN mode keeps tokenless compatibility with existing tested builds.
+- VPS mode requires a shared token and applies handshake, session, and peer
+  limits.
 
-Treat session IDs as routing labels, not passwords.
+Neither profile encrypts gameplay traffic or supplies persistent accounts,
+server discovery, application-level traffic rate limiting, or denial-of-service
+protection. Treat session IDs as routing labels, not passwords. Use a VPN or
+source-IP firewall allowlist for external deployment.

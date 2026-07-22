@@ -7,3 +7,7 @@
 *.h text eol=lf
 *.sha256 text eol=lf
 *.patch text eol=lf whitespace=-blank-at-eof,-space-before-tab,-trailing-space
+Dockerfile text eol=lf
+*.service text eol=lf
+*.env.example text eol=lf
+*.csproj text eol=lf

@@ -21,6 +21,16 @@ CONSOLE_LEGACY_RELAY_MODE_DEFAULT="local"
 Replace `192.168.1.50` with the LAN IPv4 address of the PC running the relay.
 Keep the same build ID and session ID on every participant.
 
+For an authenticated VPS, also define:
+
+```text
+CONSOLE_LEGACY_RELAY_TOKEN_DEFAULT="THE_SHARED_TOKEN"
+```
+
+Use the VPS's numeric public IPv4 address instead of the LAN address. Leave the
+token undefined or empty for the normal local/LAN relay. See [VPS.md](VPS.md)
+for deployment and token-rotation instructions.
+
 The patch already adds `CONSOLE_LEGACY_RELAY` to the tested Windows and Xbox
 project configurations. For PS3 builds, make sure the platform compile command
 also receives `-DCONSOLE_LEGACY_RELAY` and the default macros above.
@@ -43,10 +53,13 @@ $env:CONSOLE_LEGACY_RELAY_ADDR = "127.0.0.1:61000"
 $env:CONSOLE_LEGACY_RELAY_MODE = "local"
 $env:CONSOLE_LEGACY_RELAY_SESSION = "my-world"
 $env:CONSOLE_LEGACY_RELAY_BUILD_ID = "584111F7-1.0.10.0-lce1.2.3-net495-proto39"
+$env:CONSOLE_LEGACY_RELAY_TOKEN = ""
 & ".\MINECRAFT.CLIENT.EXE"
 ```
 
 If the relay is on another machine, replace `127.0.0.1` with its LAN address.
+For an authenticated VPS, set the token to the same value configured on the
+server.
 
 ## Xbox 360 / Xenia
 

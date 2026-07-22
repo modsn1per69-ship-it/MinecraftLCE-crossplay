@@ -1,0 +1,25 @@
+services:
+  legacy-crossplay-relay:
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${RELAY_PORT:-61000}:61000/tcp"
+    environment:
+      CONSOLE_LEGACY_RELAY_BIND_ADDRESS: 0.0.0.0
+      CONSOLE_LEGACY_RELAY_PORT: 61000
+      CONSOLE_LEGACY_RELAY_LOG_PATH: /data/relay.log
+      CONSOLE_LEGACY_RELAY_TOKEN: ${CONSOLE_LEGACY_RELAY_TOKEN:?Set CONSOLE_LEGACY_RELAY_TOKEN in .env}
+      CONSOLE_LEGACY_RELAY_MAX_SESSIONS: ${RELAY_MAX_SESSIONS:-64}
+      CONSOLE_LEGACY_RELAY_MAX_PEERS: ${RELAY_MAX_PEERS:-8}
+      CONSOLE_LEGACY_RELAY_MAX_PENDING_HANDSHAKES: ${RELAY_MAX_PENDING_HANDSHAKES:-64}
+      CONSOLE_LEGACY_RELAY_HANDSHAKE_TIMEOUT_MS: ${RELAY_HANDSHAKE_TIMEOUT_MS:-10000}
+    volumes:
+      - relay-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  relay-data:

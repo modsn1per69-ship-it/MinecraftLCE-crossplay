@@ -1,4 +1,10 @@
 relay/bin/
+relay/obj/
+relay/publish/
+tests/bin/
+tests/obj/
+relay-data/
+.env
 *.exe
 *.xex
 *.pkg

@@ -20,6 +20,7 @@ This repository contains only:
 - original relay server and transport source
 - source-level compatibility patches
 - patch, build, verification, and test scripts
+- optional Windows/Linux VPS deployment files
 - documentation and an automated three-peer relay regression test
 
 It does not contain a game executable, XEX, PKG, EBOOT, SELF, ISO, resource
@@ -81,6 +82,8 @@ does not make unrelated packet layouts compatible.
   colors from cycling or corrupting.
 - Routes the normal multiplayer flow through the relay policy when
   `CONSOLE_LEGACY_RELAY` is enabled.
+- Supports optional shared-token authentication and bounded relay resources for
+  external VPS deployments without changing tokenless local/LAN behavior.
 - Keeps the original title screen, worlds, menus, saves, and entitlement logic.
 
 ## Repository layout
@@ -92,6 +95,7 @@ patches/
   relay/                   Seven new relay adapter source files
 relay/
   LocalRelayServer.cs      Local multi-peer TCP relay
+  LegacyCrossplayRelay.csproj
 scripts/
   verify-baseline.ps1      Verifies the legal source tree before patching
   apply-patches.ps1        Checks and applies the patch
@@ -99,10 +103,14 @@ scripts/
   build-relay.ps1          Builds the local relay and test executable
   test-relay.ps1           Runs the three-peer routing regression test
   start-relay.ps1          Starts the relay
+  publish-relay.ps1        Publishes the .NET 8 relay for a VPS
   build-xbox360.ps1        Validates and invokes an installed Xbox toolchain
 tests/
   RelayHubIntegrationTest.cs
 docs/                      Focused reference pages
+deploy/systemd/            Linux service and environment templates
+Dockerfile                 Linux container build
+docker-compose.yml         Authenticated VPS container deployment
 ```
 
 ## Requirements
@@ -115,6 +123,8 @@ You need:
 - your own legally obtained game files for emulator or console testing
 - Visual Studio/toolsets expected by the source snapshot
 - a Windows .NET Framework C# compiler for the relay
+- .NET 8 SDK for portable Windows/Linux relay publishing, or Docker Engine with
+  Docker Compose on the VPS
 - the licensed platform toolchain required by the source project for an Xbox
   360 or PS3 build
 - Xenia or RPCS3 when testing emulator clients
@@ -265,6 +275,10 @@ CONSOLE_LEGACY_RELAY_SESSION_DEFAULT="my-world"
 CONSOLE_LEGACY_RELAY_BUILD_DEFAULT="584111F7-1.0.10.0-lce1.2.3-net495-proto39"
 ```
 
+For local or trusted-LAN operation, leave
+`CONSOLE_LEGACY_RELAY_TOKEN_DEFAULT` undefined or empty. An external VPS uses
+the additional authenticated setting documented below.
+
 Do not remove or weaken the build-ID check. It prevents obviously mismatched
 clients from exchanging gameplay packets.
 
@@ -281,8 +295,14 @@ A passing test prints:
 
 ```text
 RELAY_HUB_3_PEER_OK
-Relay integration test passed.
+RELAY_HUB_3_PEER_AUTH_OK
+Relay integration tests passed.
 ```
+
+The first marker verifies backward-compatible tokenless LAN routing. The second
+verifies rejection of a wrong token followed by authenticated three-peer
+routing. Both runs also keep a second hosted session active and verify that its
+traffic remains routed to its own host.
 
 Generated relay executables are written to `relay/bin/` and are intentionally
 ignored by Git.
@@ -319,7 +339,163 @@ New-NetFirewallRule `
 ```
 
 Do not forward this port through the router. The included relay is not hardened
-for the public Internet.
+for unauthenticated public-Internet exposure.
+
+### Optional: Run the relay on an external VPS
+
+The external relay is still a transport service, not a dedicated Minecraft
+server. The PC game host must remain running with its world open. Every game
+connects outbound to the VPS, so players do not forward ports at home.
+
+The VPS profile adds an access token, handshake timeout, pending-handshake
+limit, session limit, and per-session peer limit. Its authenticated routing is
+covered by the same three-peer regression test as local mode. Gameplay traffic
+is still not encrypted. Use a VPN when possible; otherwise use the VPS firewall
+to allow only participating public IP addresses.
+
+#### Windows VPS deployment
+
+From an elevated PowerShell window on a Windows VPS:
+
+```powershell
+git clone https://github.com/modsn1per69-ship-it/MinecraftLCE-crossplay.git
+Set-Location .\MinecraftLCE-crossplay
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\build-relay.ps1
+$env:CONSOLE_LEGACY_RELAY_TOKEN = "REPLACE_WITH_A_RANDOM_TOKEN"
+.\scripts\start-relay.ps1 `
+  -VpsMode `
+  -Port 61000
+```
+
+The script binds VPS mode to `0.0.0.0`, requires a nonempty token, and keeps the
+normal local defaults unchanged when `-VpsMode` is omitted. Run it through Task
+Scheduler or a service manager if it must restart automatically after reboot.
+Keeping the token in the environment avoids placing it in relay command-line
+arguments, but administrators must still protect the service configuration.
+Allow only the participating public IP addresses through Windows Firewall:
+
+```powershell
+New-NetFirewallRule `
+  -DisplayName "Legacy Console Crossplay VPS" `
+  -Direction Inbound `
+  -Action Allow `
+  -Protocol TCP `
+  -LocalPort 61000 `
+  -RemoteAddress "PLAYER_PUBLIC_IP"
+```
+
+#### Docker Compose deployment
+
+On a Linux VPS with Git, Docker Engine, and Docker Compose:
+
+```bash
+git clone https://github.com/modsn1per69-ship-it/MinecraftLCE-crossplay.git
+cd MinecraftLCE-crossplay
+cp .env.example .env
+openssl rand -hex 32
+```
+
+Put the generated value after `CONSOLE_LEGACY_RELAY_TOKEN=` in `.env`. Do not
+commit or share that file. Then start the service:
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f legacy-crossplay-relay
+```
+
+The log must report:
+
+```text
+listening 0.0.0.0:61000 auth=required
+```
+
+To update later:
+
+```bash
+git pull --ff-only
+docker compose up -d --build
+```
+
+#### Native .NET 8 and systemd deployment
+
+Install the .NET 8 runtime on the VPS, clone the repository, and publish:
+
+```bash
+dotnet publish relay/LegacyCrossplayRelay.csproj \
+  --configuration Release \
+  --output publish
+sudo useradd --system --home /opt/legacy-crossplay-relay \
+  --shell /usr/sbin/nologin legacy-relay
+sudo install -d -o legacy-relay -g legacy-relay \
+  /opt/legacy-crossplay-relay /var/log/legacy-crossplay-relay
+sudo cp -a publish/. /opt/legacy-crossplay-relay/
+sudo cp deploy/systemd/legacy-crossplay-relay.service /etc/systemd/system/
+sudo cp deploy/systemd/legacy-crossplay-relay.env.example \
+  /etc/legacy-crossplay-relay.env
+sudo chmod 600 /etc/legacy-crossplay-relay.env
+```
+
+Edit `/etc/legacy-crossplay-relay.env`, replace the example token with a random
+token, then enable the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now legacy-crossplay-relay
+sudo systemctl status legacy-crossplay-relay
+sudo journalctl -u legacy-crossplay-relay -f
+```
+
+#### VPS firewall
+
+Open TCP `61000` in both the provider firewall and the VPS operating-system
+firewall. Prefer one allow rule per player's public IP. For example with UFW:
+
+```bash
+sudo ufw allow from PLAYER_PUBLIC_IP to any port 61000 proto tcp
+```
+
+Do not expose database, management, RDP, SSH, or unrelated ports for the relay.
+If TCP `61000` must be open to everyone, treat the token only as basic access
+control: it does not encrypt gameplay or protect against traffic flooding.
+
+#### Configure the players
+
+Use the VPS's static numeric public IPv4 address. Xbox 360 and PS3 builds do not
+resolve DNS names in this transport path.
+
+PC host configuration:
+
+```powershell
+$env:CONSOLE_LEGACY_RELAY_ADDR = "VPS_PUBLIC_IPV4:61000"
+$env:CONSOLE_LEGACY_RELAY_MODE = "local"
+$env:CONSOLE_LEGACY_RELAY_SESSION = "my-world"
+$env:CONSOLE_LEGACY_RELAY_BUILD_ID = "584111F7-1.0.10.0-lce1.2.3-net495-proto39"
+$env:CONSOLE_LEGACY_RELAY_TOKEN = "THE_TOKEN_FROM_THE_VPS"
+```
+
+`local` selects the direct relay protocol; it does not require the relay to be
+on the same machine.
+
+Add these compile-time defaults to both the client and world-library console
+builds:
+
+```text
+CONSOLE_LEGACY_RELAY_ADDR_DEFAULT="VPS_PUBLIC_IPV4:61000"
+CONSOLE_LEGACY_RELAY_MODE_DEFAULT="local"
+CONSOLE_LEGACY_RELAY_SESSION_DEFAULT="my-world"
+CONSOLE_LEGACY_RELAY_BUILD_DEFAULT="584111F7-1.0.10.0-lce1.2.3-net495-proto39"
+CONSOLE_LEGACY_RELAY_TOKEN_DEFAULT="THE_TOKEN_FROM_THE_VPS"
+```
+
+Rebuild Xbox 360 and PS3 after changing the VPS IPv4 address or token. The
+token is embedded in those executables, so rotate it and rebuild every client
+if a build is shared outside the intended group.
+
+Start and join in the same order as the local test: relay, PC host/world, Xbox,
+then PS3. All players must use the same address, port, token, session, and build
+ID. See [`docs/VPS.md`](docs/VPS.md) for the compact operator checklist.
 
 ### 9. Build and start the PC host
 
@@ -541,6 +717,28 @@ value and console compile-time default must change with it.
 Test-NetConnection 192.168.1.50 -Port 61000
 ```
 
+For a VPS, replace the LAN address with its numeric public IPv4 address. Confirm
+the provider firewall and operating-system firewall both permit TCP `61000`
+from the player's current public IP.
+
+### ERROR unauthorized
+
+The VPS requires authentication and the client supplied no token or the wrong
+token. Confirm PC uses `CONSOLE_LEGACY_RELAY_TOKEN` and both console builds use
+the matching `CONSOLE_LEGACY_RELAY_TOKEN_DEFAULT`. Tokens are case-sensitive.
+Do not post the token in an issue or attach an executable containing it.
+
+### VPS container does not start
+
+```bash
+docker compose config
+docker compose ps
+docker compose logs legacy-crossplay-relay
+```
+
+`docker compose config` must resolve `CONSOLE_LEGACY_RELAY_TOKEN` from the local
+`.env` file. The repository ignores `.env`; `.env.example` is only a template.
+
 ### Host remains on WAITING
 
 No client completed a matching handshake. Check the exact session spelling,
@@ -622,6 +820,8 @@ PC SHA-256:
 Xbox XEX SHA-256:
 PS3 executable SHA-256:
 Relay commit:
+Relay deployment (local, Docker, or systemd):
+Authentication enabled (yes/no; never include the token):
 Build ID:
 Session ID:
 First failing action:
@@ -645,13 +845,20 @@ Host handshake:
 
 ```text
 HOST <session-id> <build-id> V2
+HOST <session-id> <build-id> V2 <access-token>
 ```
 
 Client handshake:
 
 ```text
 JOIN <session-id> <build-id> V2
+JOIN <session-id> <build-id> V2 <access-token>
 ```
+
+The token form is required only when the relay has
+`CONSOLE_LEGACY_RELAY_TOKEN` configured. The server compares the supplied token
+without logging it. Existing tokenless local/LAN handshakes remain supported
+when server authentication is disabled.
 
 The host receives framed peer traffic, while each client sees a raw gameplay
 stream after `READY`. The game host remains authoritative for worlds, entities,
@@ -659,10 +866,12 @@ inventory, and simulation.
 
 ## Security
 
-The included relay is for local development and trusted LAN use. It has no
-encryption, authentication, Internet hardening, rate limiting, or persistent
-account system. Session IDs are routing labels, not passwords. Do not expose
-TCP `61000` directly to the public Internet.
+Local mode remains intended for development and trusted LAN use. VPS mode adds
+a shared access token, handshake timeout, pending-handshake cap, session cap,
+and peer cap, but it does not add encryption, account identities, traffic rate
+limiting, or denial-of-service protection. Session IDs are routing labels, not
+passwords. Prefer a VPN or strict source-IP firewall rules and never publish the
+access token.
 
 ## Legal and distribution boundaries
 

@@ -9,6 +9,7 @@ using System.Threading;
 internal static class LocalRelayServer
 {
     private const int MaxFrameSize = 16 * 1024 * 1024;
+    private const int MaxHandshakeLength = 4096;
 
     private sealed class WaitingHost
     {
@@ -44,6 +45,11 @@ internal static class LocalRelayServer
     private static string LogPath;
     private static StreamWriter LogWriter;
     private static bool VerboseTraffic;
+    private static string AccessToken = "";
+    private static int MaxSessions = 64;
+    private static int MaxPeersPerSession = 8;
+    private static int HandshakeTimeoutMs = 10000;
+    private static Semaphore HandshakeSlots;
 
     private static void Log(string message)
     {
@@ -71,10 +77,66 @@ internal static class LocalRelayServer
         }
     }
 
+    private static int ReadEnvironmentInt(string name, int fallback, int minimum, int maximum)
+    {
+        string value = Environment.GetEnvironmentVariable(name);
+        int parsed;
+        if (!String.IsNullOrEmpty(value) && Int32.TryParse(value, out parsed)
+            && parsed >= minimum && parsed <= maximum)
+        {
+            return parsed;
+        }
+        return fallback;
+    }
+
+    private static bool ConstantTimeEquals(string expected, string actual)
+    {
+        expected = expected ?? "";
+        actual = actual ?? "";
+        int difference = expected.Length ^ actual.Length;
+        int length = Math.Max(expected.Length, actual.Length);
+        for (int i = 0; i < length; i++)
+        {
+            char left = i < expected.Length ? expected[i] : (char)0;
+            char right = i < actual.Length ? actual[i] : (char)0;
+            difference |= left ^ right;
+        }
+        return difference == 0;
+    }
+
+    private static bool IsValidHandshakeValue(string value, int maximumLength)
+    {
+        if (String.IsNullOrEmpty(value) || value.Length > maximumLength)
+        {
+            return false;
+        }
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] <= ' ' || value[i] > '~')
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static string RemoteAddress(TcpClient client)
+    {
+        try
+        {
+            IPEndPoint endpoint = client.Client.RemoteEndPoint as IPEndPoint;
+            return endpoint != null ? endpoint.Address.ToString() : "unknown";
+        }
+        catch
+        {
+            return "unknown";
+        }
+    }
+
     private static string ReadLine(NetworkStream stream)
     {
         MemoryStream buffer = new MemoryStream();
-        while (buffer.Length < 4096)
+        while (buffer.Length < MaxHandshakeLength)
         {
             int value = stream.ReadByte();
             if (value < 0)
@@ -240,15 +302,27 @@ internal static class LocalRelayServer
             Client = client,
             Stream = stream
         };
+        string error = null;
         lock (Sync)
         {
             if (HubHosts.ContainsKey(sessionId))
             {
-                WriteLine(stream, "ERROR session-in-use");
-                client.Close();
-                return;
+                error = "session-in-use";
             }
-            HubHosts.Add(sessionId, host);
+            else if (HubHosts.Count >= MaxSessions)
+            {
+                error = "server-full";
+            }
+            else
+            {
+                HubHosts.Add(sessionId, host);
+            }
+        }
+        if (error != null)
+        {
+            WriteLine(stream, "ERROR " + error);
+            client.Close();
+            return;
         }
         WriteLine(stream, "WAITING");
         Log("hub host waiting session=" + sessionId);
@@ -261,25 +335,32 @@ internal static class LocalRelayServer
     {
         HostSession host = null;
         Peer peer = null;
+        string rejection = null;
         lock (Sync)
         {
             HubHosts.TryGetValue(sessionId, out host);
-            if (host != null && !host.Closed && String.Equals(host.BuildId, buildId, StringComparison.Ordinal))
+            if (host == null || host.Closed)
+            {
+                rejection = "host-not-found";
+            }
+            else if (!String.Equals(host.BuildId, buildId, StringComparison.Ordinal))
+            {
+                rejection = "build-mismatch";
+            }
+            else if (host.Peers.Count >= MaxPeersPerSession)
+            {
+                rejection = "session-full";
+            }
+            else
             {
                 peer = new Peer { Id = host.NextPeerId++, Client = client, Stream = stream };
                 host.Peers.Add(peer.Id, peer);
             }
         }
 
-        if (host == null || host.Closed)
+        if (rejection != null)
         {
-            WriteLine(stream, "ERROR host-not-found");
-            client.Close();
-            return;
-        }
-        if (peer == null)
-        {
-            WriteLine(stream, "ERROR build-mismatch");
+            WriteLine(stream, "ERROR " + rejection);
             client.Close();
             return;
         }
@@ -370,15 +451,27 @@ internal static class LocalRelayServer
     {
         if (role == "HOST")
         {
+            string error = null;
             lock (Sync)
             {
                 if (Hosts.ContainsKey(sessionId))
                 {
-                    WriteLine(stream, "ERROR session-in-use");
-                    client.Close();
-                    return;
+                    error = "session-in-use";
                 }
-                Hosts.Add(sessionId, new WaitingHost { BuildId = buildId, Client = client });
+                else if (Hosts.Count >= MaxSessions)
+                {
+                    error = "server-full";
+                }
+                else
+                {
+                    Hosts.Add(sessionId, new WaitingHost { BuildId = buildId, Client = client });
+                }
+            }
+            if (error != null)
+            {
+                WriteLine(stream, "ERROR " + error);
+                client.Close();
+                return;
             }
             WriteLine(stream, "WAITING");
             Log("host waiting session=" + sessionId);
@@ -388,8 +481,11 @@ internal static class LocalRelayServer
         WaitingHost host = null;
         lock (Sync)
         {
-            if (Hosts.TryGetValue(sessionId, out host))
+            WaitingHost candidate;
+            if (Hosts.TryGetValue(sessionId, out candidate)
+                && String.Equals(candidate.BuildId, buildId, StringComparison.Ordinal))
             {
+                host = candidate;
                 Hosts.Remove(sessionId);
             }
         }
@@ -399,14 +495,6 @@ internal static class LocalRelayServer
             client.Close();
             return;
         }
-        if (!String.Equals(host.BuildId, buildId, StringComparison.Ordinal))
-        {
-            WriteLine(stream, "ERROR build-mismatch");
-            host.Client.Close();
-            client.Close();
-            return;
-        }
-
         NetworkStream hostStream = host.Client.GetStream();
         WriteLine(hostStream, "READY");
         WriteLine(stream, "READY");
@@ -422,12 +510,15 @@ internal static class LocalRelayServer
     private static void HandleClient(object state)
     {
         TcpClient client = (TcpClient)state;
+        bool handshakeSlotHeld = true;
         try
         {
+            client.NoDelay = true;
+            client.ReceiveTimeout = HandshakeTimeoutMs;
             NetworkStream stream = client.GetStream();
             string handshake = ReadLine(stream);
             string[] parts = handshake.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 3)
+            if (parts.Length < 3 || parts.Length > 5)
             {
                 WriteLine(stream, "ERROR invalid-handshake");
                 client.Close();
@@ -438,14 +529,31 @@ internal static class LocalRelayServer
             string sessionId = parts[1];
             string buildId = parts[2];
             bool hubProtocol = parts.Length >= 4 && String.Equals(parts[3], "V2", StringComparison.OrdinalIgnoreCase);
-            Log("handshake role=" + role + " session=" + sessionId + " build=" + buildId + " protocol=" + (hubProtocol ? "V2" : "V1"));
+            string suppliedToken = parts.Length >= 5 ? parts[4] : "";
 
-            if (role != "HOST" && role != "JOIN")
+            if ((role != "HOST" && role != "JOIN")
+                || !IsValidHandshakeValue(sessionId, 64)
+                || !IsValidHandshakeValue(buildId, 160))
             {
-                WriteLine(stream, "ERROR unknown-role");
+                WriteLine(stream, "ERROR invalid-handshake");
                 client.Close();
                 return;
             }
+            if (!String.IsNullOrEmpty(AccessToken)
+                && (!hubProtocol || !ConstantTimeEquals(AccessToken, suppliedToken)))
+            {
+                Log("authentication failed remote=" + RemoteAddress(client));
+                WriteLine(stream, "ERROR unauthorized");
+                client.Close();
+                return;
+            }
+
+            client.ReceiveTimeout = 0;
+            HandshakeSlots.Release();
+            handshakeSlotHeld = false;
+            Log("handshake role=" + role + " session=" + sessionId + " build=" + buildId
+                + " protocol=" + (hubProtocol ? "V2" : "V1") + " remote=" + RemoteAddress(client));
+
             if (hubProtocol)
             {
                 if (role == "HOST") RegisterHubHost(client, stream, sessionId, buildId);
@@ -468,22 +576,70 @@ internal static class LocalRelayServer
             Log("connection failed: " + error.Message);
             client.Close();
         }
+        finally
+        {
+            if (handshakeSlotHeld)
+            {
+                HandshakeSlots.Release();
+            }
+        }
     }
 
     public static int Main(string[] args)
     {
-        int port = args.Length > 0 ? Int32.Parse(args[0]) : 61000;
-        LogPath = args.Length > 1 ? args[1] : Path.Combine(Environment.CurrentDirectory, "local-relay.log");
-        IPAddress bindAddress = args.Length > 2 ? IPAddress.Parse(args[2]) : IPAddress.Loopback;
+        int port = args.Length > 0 ? Int32.Parse(args[0])
+            : ReadEnvironmentInt("CONSOLE_LEGACY_RELAY_PORT", 61000, 1, 65535);
+        string configuredLogPath = Environment.GetEnvironmentVariable("CONSOLE_LEGACY_RELAY_LOG_PATH");
+        LogPath = args.Length > 1 ? args[1]
+            : !String.IsNullOrEmpty(configuredLogPath) ? configuredLogPath
+            : Path.Combine(Environment.CurrentDirectory, "local-relay.log");
+        string configuredBindAddress = Environment.GetEnvironmentVariable("CONSOLE_LEGACY_RELAY_BIND_ADDRESS");
+        IPAddress bindAddress = args.Length > 2 ? IPAddress.Parse(args[2])
+            : !String.IsNullOrEmpty(configuredBindAddress) ? IPAddress.Parse(configuredBindAddress)
+            : IPAddress.Loopback;
         VerboseTraffic = args.Length > 3 && String.Equals(args[3], "--verbose-traffic", StringComparison.OrdinalIgnoreCase);
-        LogWriter = new StreamWriter(new FileStream(LogPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite), Encoding.UTF8, 65536);
+        AccessToken = Environment.GetEnvironmentVariable("CONSOLE_LEGACY_RELAY_TOKEN") ?? "";
+        if (!String.IsNullOrEmpty(AccessToken) && !IsValidHandshakeValue(AccessToken, 128))
+        {
+            Console.Error.WriteLine("CONSOLE_LEGACY_RELAY_TOKEN must be 1-128 printable characters without spaces.");
+            return 2;
+        }
+        MaxSessions = ReadEnvironmentInt("CONSOLE_LEGACY_RELAY_MAX_SESSIONS", 64, 1, 4096);
+        MaxPeersPerSession = ReadEnvironmentInt("CONSOLE_LEGACY_RELAY_MAX_PEERS", 8, 1, 64);
+        HandshakeTimeoutMs = ReadEnvironmentInt("CONSOLE_LEGACY_RELAY_HANDSHAKE_TIMEOUT_MS", 10000, 1000, 120000);
+        int maxPendingHandshakes = ReadEnvironmentInt("CONSOLE_LEGACY_RELAY_MAX_PENDING_HANDSHAKES", 64, 1, 4096);
+        HandshakeSlots = new Semaphore(maxPendingHandshakes, maxPendingHandshakes);
+
+        string logDirectory = Path.GetDirectoryName(Path.GetFullPath(LogPath));
+        if (!String.IsNullOrEmpty(logDirectory))
+        {
+            Directory.CreateDirectory(logDirectory);
+        }
+        LogWriter = new StreamWriter(new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite), Encoding.UTF8, 65536);
 
         TcpListener listener = new TcpListener(bindAddress, port);
         listener.Start();
-        Log("listening " + bindAddress + ":" + port);
+        Log("listening " + bindAddress + ":" + port + " auth="
+            + (String.IsNullOrEmpty(AccessToken) ? "disabled" : "required")
+            + " maxSessions=" + MaxSessions + " maxPeers=" + MaxPeersPerSession);
+        if (!IPAddress.IsLoopback(bindAddress) && String.IsNullOrEmpty(AccessToken))
+        {
+            Log("WARNING non-loopback listener has no access token; restrict it with a firewall or VPN");
+        }
         for (;;)
         {
             TcpClient client = listener.AcceptTcpClient();
+            if (!HandshakeSlots.WaitOne(0))
+            {
+                try
+                {
+                    WriteLine(client.GetStream(), "ERROR server-busy");
+                }
+                catch { }
+                client.Close();
+                Log("connection rejected reason=too-many-pending-handshakes");
+                continue;
+            }
             Thread thread = new Thread(HandleClient);
             thread.IsBackground = true;
             thread.Start(client);
