@@ -8,6 +8,11 @@ This is the complete setup guide. The files in `docs/` provide the same topics
 as smaller reference pages, but a new user can install, patch, build, run, and
 troubleshoot the project by following this README from top to bottom.
 
+## Community and support
+
+- Discord: [discord.gg/2rvruaWDXk](https://discord.gg/2rvruaWDXk)
+- Buy Me a Coffee: [buymeacoffee.com/sn1per](https://buymeacoffee.com/sn1per)
+
 ## Release scope
 
 This repository contains only:
@@ -674,8 +679,3 @@ Minecraft is a trademark of Mojang Synergies AB. Xbox and Microsoft are
 trademarks of Microsoft. PlayStation is a trademark of Sony Interactive
 Entertainment. This independent compatibility project is not affiliated with
 or endorsed by Mojang, Microsoft, Sony, 4J Studios, RPCS3, or Xenia.
-
-## Community and support
-
-- Discord: [discord.gg/2rvruaWDXk](https://discord.gg/2rvruaWDXk)
-- Buy Me a Coffee: [buymeacoffee.com/sn1per](https://buymeacoffee.com/sn1per)
