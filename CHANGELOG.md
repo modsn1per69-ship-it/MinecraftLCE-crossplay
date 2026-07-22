@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed heavy PS3/RPCS3 lag while joining a relay world by limiting the initial
+  world-data receive burst to 32 KiB per game-loop pass. This is a PS3-only
+  pacing change and does not alter packets or crossplay compatibility.
 - Added opt-in authenticated external VPS relay handshakes.
 - Added handshake, session, and peer limits for external deployments.
 - Added portable .NET 8, Docker Compose, and Linux `systemd` deployment files.
