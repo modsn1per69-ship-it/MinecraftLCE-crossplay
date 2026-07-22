@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 - 2026-07-22
 
 - Fixed heavy PS3/RPCS3 lag while joining a relay world by limiting the initial
   world-data receive burst to 32 KiB per game-loop pass. This is a PS3-only
