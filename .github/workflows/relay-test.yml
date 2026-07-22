@@ -1,0 +1,29 @@
+name: Relay test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  relay-integration:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build and test relay
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass
+          .\scripts\test-relay.ps1
+
+      - name: Reject prohibited release artifacts
+        shell: powershell
+        run: |
+          $blocked = Get-ChildItem -Recurse -File | Where-Object {
+            $_.Extension -in '.xex', '.pkg', '.self', '.elf', '.iso', '.arc', '.swf', '.pck'
+          }
+          if ($blocked) {
+            $blocked | ForEach-Object { Write-Error "Blocked artifact: $($_.FullName)" }
+            exit 1
+          }
