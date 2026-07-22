@@ -787,6 +787,15 @@ Both sender and receiver must contain the raw `BlockRegionUpdatePacket` relay
 path. Mixing a raw relay client with a native compressed client causes missing
 chunks or disconnects.
 
+### PS3 stutters while joining a world
+
+Rebuild the PS3 target with the current `RelayTransport.cpp`. Its PS3-only
+receive budget spreads the initial chunk burst across game-loop passes without
+changing packet data or compatibility. The default is 32 KiB per pass. On an
+unusually slow emulator host, define
+`CONSOLE_LEGACY_PS3_RELAY_RECEIVE_BUDGET=16384` for smoother pacing at the cost
+of a longer initial world load.
+
 ### Grass or foliage changes color on PC
 
 Confirm the `LevelChunk.cpp` biome-tail fix is present and all clients were

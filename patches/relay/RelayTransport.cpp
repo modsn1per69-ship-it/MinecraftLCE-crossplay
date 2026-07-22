@@ -44,6 +44,10 @@
 static const unsigned short RELAY_DEFAULT_PORT = 61000;
 static const unsigned int PS3_NETWORK_MEMORY_SIZE = 0x20000;
 
+#ifndef CONSOLE_LEGACY_PS3_RELAY_RECEIVE_BUDGET
+#define CONSOLE_LEGACY_PS3_RELAY_RECEIVE_BUDGET (32 * 1024)
+#endif
+
 #if defined(__PS3__)
 static void ConfigureRelaySocket(uintptr_t socketValue)
 {
@@ -1018,7 +1022,7 @@ bool RelayTransport::Pump(ReceiveCallback callback, void *context)
 		return false;
 	}
 	unsigned char buffer[8192];
-	int receiveIterations = 0;
+	int receivedThisPump = 0;
 	for (;;)
 	{
 		fd_set readSet;
@@ -1056,9 +1060,9 @@ bool RelayTransport::Pump(ReceiveCallback callback, void *context)
 			Close();
 			return false;
 		}
-		// A joining client can receive world data continuously. Yield back to
-		// Minecraft so the main loop keeps rendering and consuming its queues.
-		if (++receiveIterations >= 16)
+		receivedThisPump += received;
+		// Keep the initial chunk burst from monopolizing a PS3 game-loop pass.
+		if (receivedThisPump >= CONSOLE_LEGACY_PS3_RELAY_RECEIVE_BUDGET)
 		{
 			return true;
 		}
