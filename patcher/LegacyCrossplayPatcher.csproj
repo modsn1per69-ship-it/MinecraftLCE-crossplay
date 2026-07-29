@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LegacyCrossplayPatcher</AssemblyName>
+    <RootNamespace>LegacyCrossplayPatcher</RootNamespace>
+    <Version>0.2.0</Version>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\patches\baseline.sha256" LogicalName="Bundle.patches.baseline.sha256" />
+    <EmbeddedResource Include="..\patches\crossplay-core.patch" LogicalName="Bundle.patches.crossplay-core.patch" />
+    <EmbeddedResource Include="..\patches\relay\LegacyRelayPolicy.h" LogicalName="Bundle.patches.relay.LegacyRelayPolicy.h" />
+    <EmbeddedResource Include="..\patches\relay\LegacyRelayUserConfig.h" LogicalName="Bundle.patches.relay.LegacyRelayUserConfig.h" />
+    <EmbeddedResource Include="..\patches\relay\NetworkPlayerRelay.cpp" LogicalName="Bundle.patches.relay.NetworkPlayerRelay.cpp" />
+    <EmbeddedResource Include="..\patches\relay\NetworkPlayerRelay.h" LogicalName="Bundle.patches.relay.NetworkPlayerRelay.h" />
+    <EmbeddedResource Include="..\patches\relay\PlatformNetworkManagerRelay.cpp" LogicalName="Bundle.patches.relay.PlatformNetworkManagerRelay.cpp" />
+    <EmbeddedResource Include="..\patches\relay\PlatformNetworkManagerRelay.h" LogicalName="Bundle.patches.relay.PlatformNetworkManagerRelay.h" />
+    <EmbeddedResource Include="..\patches\relay\RelayTransport.cpp" LogicalName="Bundle.patches.relay.RelayTransport.cpp" />
+    <EmbeddedResource Include="..\patches\relay\RelayTransport.h" LogicalName="Bundle.patches.relay.RelayTransport.h" />
+  </ItemGroup>
+</Project>

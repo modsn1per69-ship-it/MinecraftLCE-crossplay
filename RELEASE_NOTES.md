@@ -1,34 +1,44 @@
-# Legacy Console Crossplay Patches 0.1.0
+# Minecraft Legacy Console Crossplay 0.2.0
 
-First patch-only release for the tested PC host, Xbox 360/Xenia, and PS3/RPCS3
-three-player topology.
+Version 0.2.0 introduces Legacy Crossplay Patcher, a self-contained Windows
+desktop utility for the verified source-patch workflow.
 
-Included:
+## Included
 
-- multi-peer local TCP relay source
-- source-level relay adapter patch
-- cross-platform player UID normalization
-- third-player visibility and movement fixes
-- raw chunk transfer and biome-tail fixes
-- baseline verification and reversible patch scripts
-- detailed build, setup, use, architecture, legal, and troubleshooting guides
-- automated relay routing and build-mismatch regression test
+- clean modern Patch, Setup Guide, and Activity Log views
+- local Minecraft Game format detection and SHA-256 reporting
+- exact 30-file source baseline verification
+- timestamped source backups
+- embedded crossplay patch and relay adapter installation
+- shared relay/VPS configuration generation
+- PC, Xbox 360, and PS3 platform build launching
+- in-app PC, Xbox 360, PS3, relay/VPS, and troubleshooting guides
+- PS3 join pacing fix from version 0.1.1
+- authenticated external VPS relay support
+- automated patcher and three-peer relay regression tests
 
-Required baseline:
+## Tested baseline
 
 ```text
-Title ID: 584111F7
-Game: 1.0.10.0
-LCE: 1.2.3
+PC: native Windows64 source build 1.3.0495.0
+Xbox 360: 1.0.10.0 / title ID 584111F7
+PS3: BLES01976 / update 1.84 / APP_VER 01.84
+LCE source: 1.2.3
 Net version: 495
 Protocol: 39
 ```
 
-No XEX, PKG, ISO, game executable, game asset, proprietary source tree, console
-SDK, firmware, key, launcher, branding, or license bypass is included. Users
-must patch and build their own legally obtained source and game files.
+## Distribution boundary
 
-Community:
+The release asset contains only the open-source patcher and embedded open patch
+data. It does not contain Minecraft binaries or assets, proprietary source,
+console SDK files, firmware, keys, certificates, license bypasses, or modified
+console game packages.
+
+Users must provide their own legally obtained Minecraft Game, matching source,
+and required platform toolchains.
+
+## Community
 
 - Discord: https://discord.gg/2rvruaWDXk
 - Support: https://buymeacoffee.com/sn1per

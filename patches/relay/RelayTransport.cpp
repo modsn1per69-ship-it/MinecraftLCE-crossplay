@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "RelayTransport.h"
+#include "LegacyRelayUserConfig.h"
 
 #include <stdlib.h>
 #include <string.h>

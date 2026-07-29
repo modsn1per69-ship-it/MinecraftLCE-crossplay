@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 - 2026-07-29
+
+- Added the optional Legacy Crossplay Patcher Windows desktop utility.
+- Added local EXE/XEX/PKG/SELF signature inspection and SHA-256 reporting.
+- Added baseline validation, timestamped backups, embedded patch application,
+  relay configuration generation, platform build launching, activity logs, and
+  an in-app setup guide.
+- Added `LegacyRelayUserConfig.h` for reproducible shared relay defaults.
+
 ## 0.1.1 - 2026-07-22
 
 - Fixed heavy PS3/RPCS3 lag while joining a relay world by limiting the initial

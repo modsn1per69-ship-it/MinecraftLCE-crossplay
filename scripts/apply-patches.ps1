@@ -62,6 +62,7 @@ finally {
 
 New-Item -ItemType Directory -Path $RelayTarget -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $RelaySource "LegacyRelayPolicy.h") -Destination $RelayTarget -Force
+Copy-Item -LiteralPath (Join-Path $RelaySource "LegacyRelayUserConfig.h") -Destination $RelayTarget -Force
 Copy-Item -LiteralPath (Join-Path $RelaySource "NetworkPlayerRelay.cpp") -Destination $RelayTarget -Force
 Copy-Item -LiteralPath (Join-Path $RelaySource "NetworkPlayerRelay.h") -Destination $RelayTarget -Force
 Copy-Item -LiteralPath (Join-Path $RelaySource "PlatformNetworkManagerRelay.cpp") -Destination $RelayTarget -Force
@@ -70,4 +71,4 @@ Copy-Item -LiteralPath (Join-Path $RelaySource "RelayTransport.cpp") -Destinatio
 Copy-Item -LiteralPath (Join-Path $RelaySource "RelayTransport.h") -Destination $RelayTarget -Force
 
 Write-Host "Crossplay source patch applied successfully."
-Write-Host "Next: read docs\BUILDING.md and build every platform from this same source revision."
+Write-Host "Next: use the patcher's Setup Guide and build every platform from this same source revision."

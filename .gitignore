@@ -3,6 +3,12 @@ relay/obj/
 relay/publish/
 tests/bin/
 tests/obj/
+patcher/bin/
+patcher/obj/
+patcher/publish/
+patcher.tests/bin/
+patcher.tests/obj/
+docs/images/patcher-log.png
 relay-data/
 .env
 *.exe

@@ -35,6 +35,7 @@ finally {
 
 $relayFiles = @(
     "LegacyRelayPolicy.h",
+    "LegacyRelayUserConfig.h",
     "NetworkPlayerRelay.cpp",
     "NetworkPlayerRelay.h",
     "PlatformNetworkManagerRelay.cpp",
