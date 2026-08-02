@@ -86,7 +86,7 @@
           <Border Height="1" Background="#2C3A50" Margin="0,0,0,13" />
           <TextBlock Text="PATCH-ONLY UTILITY" Foreground="#8091A9" FontSize="10" FontWeight="SemiBold" />
           <TextBlock Text="No game files are uploaded" Foreground="#B5C0D0" FontSize="11" Margin="0,3,0,0" />
-          <TextBlock Text="Version 0.2.0" Foreground="#687A94" FontSize="10" Margin="0,2,0,0" />
+          <TextBlock Text="Version 0.2.1" Foreground="#8798B1" FontSize="10" Margin="0,2,0,0" />
         </StackPanel>
       </Grid>
     </Border>

@@ -1,4 +1,14 @@
-# Minecraft Legacy Console Crossplay 0.2.0
+# Minecraft Legacy Console Crossplay 0.2.1
+
+## Text visibility fix
+
+Version 0.2.1 fixes a WPF rendering issue that could make values typed into the patcher's input fields invisible. Input text, the caret, and selected text now use explicit high-contrast colors across supported Windows themes.
+
+The patcher remains fully local and patch-only. It does not contain or upload Minecraft binaries, proprietary source, console SDKs, firmware, keys, certificates, or license bypasses.
+
+---
+
+# Previous release: 0.2.0
 
 Version 0.2.0 introduces Legacy Crossplay Patcher, a self-contained Windows
 desktop utility for the verified source-patch workflow.

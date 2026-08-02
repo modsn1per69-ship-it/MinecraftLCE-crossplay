@@ -30,7 +30,7 @@ public partial class MainWindow : Window
         if (loadUserSettings)
             LoadSettings();
         ShowGuide("quick");
-        AppendLog("[ready] Legacy Crossplay Patcher 0.2.0");
+        AppendLog("[ready] Legacy Crossplay Patcher 0.2.1");
     }
 
     public void PrepareScreenshot(string view)

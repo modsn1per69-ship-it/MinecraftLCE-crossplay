@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 - 2026-08-02
+
+### Fixed
+
+- Fixed text entered into patcher input fields rendering invisibly on affected Windows themes.
+- Made the input caret and selection highlight explicit for consistent contrast.
+
 ## 0.2.0 - 2026-07-29
 
 - Added the optional Legacy Crossplay Patcher Windows desktop utility.
