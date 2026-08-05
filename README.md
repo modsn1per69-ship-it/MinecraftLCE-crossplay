@@ -10,6 +10,15 @@ through the same relay session.
 
 ![Legacy Crossplay Patcher patch screen](docs/images/patcher-patch.png)
 
+## Discord technical support bot
+
+The optional [Discord support bot](support-bot/README.md) can diagnose build,
+relay and crossplay errors from logs and project documentation. It supports
+`/ask`, direct mentions, text-log attachments and restricted support-channel
+automatic replies. Known failures are checked locally before the optional AI
+diagnosis, including missing Xbox 360 media headers, physical clients compiled
+with loopback, session mismatches and stalled joins.
+
 ## New patcher guide
 
 Legacy Crossplay Patcher is the recommended setup method. It keeps the process

@@ -1,0 +1,16 @@
+.git
+.env
+support-bot/.env
+support-bot/.venv
+**/__pycache__
+**/bin
+**/obj
+**/publish
+*.exe
+*.xex
+*.pkg
+*.self
+*.elf
+*.iso
+*.log
+

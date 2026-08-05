@@ -11,6 +11,9 @@ patcher.tests/obj/
 docs/images/patcher-log.png
 relay-data/
 .env
+support-bot/.env
+support-bot/.venv/
+support-bot/__pycache__/
 *.exe
 *.xex
 *.pkg
