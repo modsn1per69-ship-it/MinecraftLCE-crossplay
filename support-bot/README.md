@@ -10,6 +10,7 @@ For mention-based support, it includes up to five recent messages from the same 
 - physical consoles incorrectly compiled with `127.0.0.1`
 - relay bind-address mistakes
 - session/build/protocol mismatches
+- Xenia profile state causing an endless join spinner
 - endless joining screens and missing host/join handshakes
 - common PC/Xenia/RPCS3 build and runtime evidence
 

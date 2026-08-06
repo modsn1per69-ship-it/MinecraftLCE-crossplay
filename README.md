@@ -193,6 +193,22 @@ Recorded successful emulator environment:
 - incomplete world loading on console clients
 - PS3 join lag through a 32 KiB per-frame receive budget
 
+## Troubleshooting endless joining
+
+If Xenia remains on the join spinner, check its profile before rebuilding or
+changing relay settings:
+
+1. Close Minecraft and select one valid Xenia profile.
+2. Confirm the profile is signed in, then restart Xenia.
+3. Retry with the same relay session.
+4. If needed, keep the original profile backed up and test with a fresh
+   Xenia-generated profile.
+
+If a fresh signed-in profile also stalls, inspect the relay log. It must show
+both the hosting and joining peer in the same session with the same build ID and
+V2 protocol. For a physical Xbox 360, follow the LAN address and TCP `61000`
+checks instead; Xenia profile troubleshooting does not apply.
+
 ## Build the patcher from source
 
 ```powershell

@@ -19,6 +19,25 @@
 6. Separate a build problem from a network problem. FTP or HTTP working on a console does not prove that the game reaches TCP 61000.
 7. Do not claim the problem is fixed until the relay shows both hosting and joining peers and gameplay is verified.
 
+## Xenia profile and endless joining
+
+An endless join spinner on Xenia is not always a relay failure. A missing,
+unselected, or incorrectly signed-in Xenia profile can stall Minecraft while the
+relay remains healthy.
+
+1. Close Minecraft before changing the active profile.
+2. Select one valid Xenia profile and confirm it is signed in.
+3. Restart Xenia, launch Minecraft, and retry the join.
+4. If it still stalls, back up the existing profile and test with a fresh
+   Xenia-generated profile. Do not delete the original profile or its saves.
+5. Continue with relay diagnosis only if the fresh signed-in profile also fails.
+
+For Xenia Canary, profile data is normally under the emulator's user directory.
+The [official Xenia Canary profile documentation](https://github.com/xenia-canary/xenia-canary/wiki/Profiles)
+describes generated profiles, imported profiles, and signed-in user slots.
+Profile storage location varies with portable mode, so inspect the user directory
+used by that exact Xenia instance.
+
 ## Address rules
 
 - `127.0.0.1` means the same machine. It is valid only when the relay and client are on the same PC.
@@ -46,4 +65,3 @@ Do not copy `DurangoMedia/strings.h`, `Windows64Media/strings.h`, or a header fr
 ## Distribution boundary
 
 Never provide download locations for Minecraft game binaries, XEX/PKG/SELF files, copyrighted media/assets, complete proprietary source trees, console SDKs, firmware, keys, certificates, or license bypasses. Explain how users can patch and build their own legally obtained matching files.
-

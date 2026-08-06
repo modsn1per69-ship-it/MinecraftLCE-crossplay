@@ -36,6 +36,14 @@ class DiagnosticTests(unittest.TestCase):
             codes,
         )
 
+    def test_xenia_profile_join_stall_is_prioritized(self):
+        codes = [item.code for item in diagnose("Xenia gets infinite loading when joining the server")]
+        self.assertEqual(["xenia-profile-join-stall", "join-stall"], codes)
+
+    def test_physical_xbox_stall_does_not_trigger_xenia_profile(self):
+        codes = {item.code for item in diagnose("My physical Xbox 360 has infinite loading")}
+        self.assertNotIn("xenia-profile-join-stall", codes)
+
     def test_clean_question_has_no_false_positive(self):
         self.assertEqual([], diagnose("How do I start the patcher?"))
 

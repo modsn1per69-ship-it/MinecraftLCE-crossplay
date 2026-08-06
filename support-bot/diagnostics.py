@@ -74,13 +74,33 @@ def diagnose(text: str) -> list[Diagnostic]:
         "endless loading",
         "connecting to host",
     )
-    if any(phrase in lowered for phrase in join_stall_phrases):
+    join_is_stalled = any(phrase in lowered for phrase in join_stall_phrases)
+    is_xenia = "xenia" in lowered
+
+    if join_is_stalled and is_xenia:
+        findings.append(
+            Diagnostic(
+                code="xenia-profile-join-stall",
+                title="Check the active Xenia profile before changing relay settings",
+                evidence="An endless join on Xenia can be caused by its selected or signed-in profile state even when the relay is working.",
+                next_steps=(
+                    "Close Minecraft, select one valid Xenia profile, and confirm that profile is signed in before launching the game again.",
+                    "Restart Xenia after changing profiles; do not switch profiles while Minecraft is already running.",
+                    "If the same profile still stalls, keep it backed up and retry with a fresh Xenia-generated profile.",
+                    "Only continue with relay diagnosis if the fresh signed-in profile also stalls.",
+                ),
+            )
+        )
+
+    if join_is_stalled:
         findings.append(
             Diagnostic(
                 code="join-stall",
                 title="The join is stalling before gameplay",
                 evidence="The report describes an endless joining/loading state.",
-                next_steps=(
+                next_steps=((
+                    "Verify the selected Xenia profile is signed in before changing relay or build settings.",
+                ) if is_xenia else ()) + (
                     "Verify the relay logs show one hosting peer and one joining peer in the same session.",
                     "Verify every client uses build 584111F7-1.0.10.0-lce1.2.3-net495-proto39 and relay protocol V2.",
                     "Start the relay, enter the PC online world completely, then launch and join from the console.",
