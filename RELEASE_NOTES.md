@@ -1,4 +1,32 @@
-# Minecraft Legacy Console Crossplay 0.2.1
+# Minecraft Legacy Console Crossplay 0.2.2
+
+## Updated patcher and Xenia join guidance
+
+Version 0.2.2 rebuilds the self-contained Windows patcher from the current
+repository. It embeds the complete verified LCE 1.2.3 / net 495 / protocol 39
+crossplay patch bundle and adds the confirmed Xenia profile fix to the built-in
+Xbox 360 and troubleshooting guides.
+
+When Xenia remains on the join spinner, close Minecraft, select one valid
+signed-in Xenia profile, restart Xenia, and retry before changing relay or build
+settings. Existing profiles and saves should be backed up rather than deleted.
+
+The gameplay patch payload is unchanged from 0.2.1. This release packages the
+current verified payload with corrected setup guidance; it does not introduce
+an untested protocol or game-code revision.
+
+Patch application now runs independently of any parent Git repository. This
+prevents Git from silently skipping the patch when the selected source folder is
+nested inside another repository. The patcher's apply/reapply smoke test covers
+that layout.
+
+The patcher remains fully local and patch-only. It does not contain or upload
+Minecraft binaries, proprietary source, console SDKs, firmware, keys,
+certificates, or license bypasses.
+
+---
+
+# Previous release: 0.2.1
 
 ## Text visibility fix
 

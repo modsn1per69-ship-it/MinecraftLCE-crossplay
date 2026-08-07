@@ -170,7 +170,7 @@ public sealed class PatchService
         Log("Running patch compatibility check.");
         await RunProcessAsync(
             git,
-            new[] { "-c", "core.autocrlf=false", "apply", "--check", "--whitespace=nowarn", patchPath },
+            new[] { "-c", "core.autocrlf=false", "apply", "--no-index", "--check", "--whitespace=nowarn", patchPath },
             sourceRoot,
             cancellationToken);
 
@@ -180,7 +180,7 @@ public sealed class PatchService
             Log("Applying crossplay source patch.");
             await RunProcessAsync(
                 git,
-                new[] { "-c", "core.autocrlf=false", "apply", "--whitespace=nowarn", patchPath },
+                new[] { "-c", "core.autocrlf=false", "apply", "--no-index", "--whitespace=nowarn", patchPath },
                 sourceRoot,
                 cancellationToken);
             applied = true;
@@ -204,7 +204,7 @@ public sealed class PatchService
                 {
                     await RunProcessAsync(
                         git,
-                        new[] { "-c", "core.autocrlf=false", "apply", "--reverse", "--whitespace=nowarn", patchPath },
+                        new[] { "-c", "core.autocrlf=false", "apply", "--no-index", "--reverse", "--whitespace=nowarn", patchPath },
                         sourceRoot,
                         CancellationToken.None);
                 }
@@ -460,6 +460,13 @@ public sealed class PatchService
         };
         foreach (var argument in arguments)
             start.ArgumentList.Add(argument);
+
+        if (Path.GetFileNameWithoutExtension(executable).Equals("git", StringComparison.OrdinalIgnoreCase))
+        {
+            // --no-index lets git apply operate without repository metadata.
+            // Disable discovery so an unrelated parent repo cannot add a prefix.
+            start.Environment["GIT_DIR"] = "NUL";
+        }
 
         using var process = new Process { StartInfo = start, EnableRaisingEvents = true };
         process.OutputDataReceived += (_, e) =>

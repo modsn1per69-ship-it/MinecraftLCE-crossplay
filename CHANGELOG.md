@@ -1,6 +1,6 @@
 # Changelog
 
-## Documentation update - 2026-08-07
+## 0.2.2 - 2026-08-07
 
 ### Fixed
 
@@ -10,6 +10,10 @@
   profile before suggesting relay or build changes.
 - Added regression coverage so physical Xbox 360 reports remain on the separate
   LAN and relay troubleshooting path.
+- Rebuilt the standalone Windows patcher with the complete verified crossplay
+  patch bundle and the new Xenia profile troubleshooting guidance.
+- Fixed patch application silently doing nothing when the selected source folder
+  is nested inside an unrelated parent Git repository.
 
 ## 0.2.1 - 2026-08-02
 

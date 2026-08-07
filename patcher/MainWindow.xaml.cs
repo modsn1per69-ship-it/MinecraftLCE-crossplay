@@ -30,7 +30,7 @@ public partial class MainWindow : Window
         if (loadUserSettings)
             LoadSettings();
         ShowGuide("quick");
-        AppendLog("[ready] Legacy Crossplay Patcher 0.2.1");
+        AppendLog("[ready] Legacy Crossplay Patcher 0.2.2");
     }
 
     public void PrepareScreenshot(string view)
@@ -327,6 +327,8 @@ public partial class MainWindow : Window
 
                 5. Keep the newly built Minecraft Game beside the matching resources from your own dump, then boot it in Xenia or on compatible development hardware.
 
+                6. Before joining through Xenia, select one valid Xenia profile and confirm it is signed in. Restart Xenia after changing profiles.
+
                 The patcher does not include an XDK, title update, signing key, game content, or license bypass.
                 """),
             "ps3" => (
@@ -369,6 +371,9 @@ public partial class MainWindow : Window
 
                 BUILD TOOLCHAIN NOT FOUND
                 Install the platform toolchain required by the source project. The patcher deliberately does not download proprietary console SDKs.
+
+                XENIA CONNECTING FOREVER
+                Close Minecraft, select one valid signed-in Xenia profile, restart Xenia, and retry. If it still stalls, back up the original profile and test with a fresh Xenia-generated profile before changing relay settings.
 
                 CONNECTING FOREVER
                 Confirm the relay is listening, the PC host is already inside an online world, and every client has exactly the same session and build ID.
