@@ -8,6 +8,10 @@ through the same relay session.
 · [Join the Discord](https://discord.gg/2rvruaWDXk)
 · [Support the project](https://buymeacoffee.com/sn1per)
 
+> **Xenia endless-join fix:** Confirm one valid Xenia profile is selected and
+> signed in before launching Minecraft. Restart Xenia after changing profiles.
+> See [Troubleshooting endless joining](#troubleshooting-endless-joining).
+
 ![Legacy Crossplay Patcher patch screen](docs/images/patcher-patch.png)
 
 ## Discord technical support bot

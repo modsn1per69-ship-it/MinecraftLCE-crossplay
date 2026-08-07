@@ -1,5 +1,16 @@
 # Changelog
 
+## Documentation update - 2026-08-07
+
+### Fixed
+
+- Documented Xenia profile state as a confirmed cause of the endless join
+  spinner.
+- Updated the Discord support bot to check the selected and signed-in Xenia
+  profile before suggesting relay or build changes.
+- Added regression coverage so physical Xbox 360 reports remain on the separate
+  LAN and relay troubleshooting path.
+
 ## 0.2.1 - 2026-08-02
 
 ### Fixed
