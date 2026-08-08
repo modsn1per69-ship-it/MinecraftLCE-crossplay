@@ -45,4 +45,13 @@ public:
 		return requested;
 #endif
 	}
+
+	static bool UsesPlatformDLCInstall()
+	{
+#if defined(CONSOLE_LEGACY_RELAY)
+		return false;
+#else
+		return true;
+#endif
+	}
 };

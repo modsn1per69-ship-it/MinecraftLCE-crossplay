@@ -19,17 +19,25 @@ if ($null -eq $git) {
 }
 
 Push-Location $SourceRoot
+$previousGitDir = $env:GIT_DIR
 try {
-    & $git.Source -c core.autocrlf=false apply --reverse --check --whitespace=nowarn $PatchPath
+    $env:GIT_DIR = "NUL"
+    & $git.Source -c core.autocrlf=false apply --no-index --reverse --check --whitespace=nowarn $PatchPath
     if ($LASTEXITCODE -ne 0) {
         throw "The patch cannot be reversed cleanly. Preserve your work and inspect the source changes manually."
     }
-    & $git.Source -c core.autocrlf=false apply --reverse --whitespace=nowarn $PatchPath
+    & $git.Source -c core.autocrlf=false apply --no-index --reverse --whitespace=nowarn $PatchPath
     if ($LASTEXITCODE -ne 0) {
         throw "Git failed while reversing crossplay-core.patch."
     }
 }
 finally {
+    if ($null -eq $previousGitDir) {
+        Remove-Item Env:GIT_DIR -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:GIT_DIR = $previousGitDir
+    }
     Pop-Location
 }
 

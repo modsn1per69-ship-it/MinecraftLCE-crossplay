@@ -77,6 +77,28 @@ def diagnose(text: str) -> list[Diagnostic]:
     join_is_stalled = any(phrase in lowered for phrase in join_stall_phrases)
     is_xenia = "xenia" in lowered
 
+    xui_dlc_signature = any(
+        term in lowered
+        for term in (
+            "startinstalldlcprocess",
+            "xui_multigamejoinload.cpp",
+            "xui_multigamecreate.cpp",
+        )
+    )
+    if xui_dlc_signature:
+        findings.append(
+            Diagnostic(
+                code="xbox-xui-dlc-stall",
+                title="The old Xbox 360 XUI entered the platform DLC installer",
+                evidence="The report names a create/join XUI or StartInstallDLCProcess path fixed in patcher 0.2.3.",
+                next_steps=(
+                    "Use Legacy Crossplay Patcher 0.2.3 or newer and start from the exact clean source baseline.",
+                    "Reapply the source patch and rebuild Release|Xbox 360; relay settings do not modify an existing XEX.",
+                    "Confirm the rebuilt XUI create/join scenes call LegacyRelayPolicy::UsesPlatformDLCInstall before StartInstallDLCProcess.",
+                ),
+            )
+        )
+
     if join_is_stalled and is_xenia:
         findings.append(
             Diagnostic(

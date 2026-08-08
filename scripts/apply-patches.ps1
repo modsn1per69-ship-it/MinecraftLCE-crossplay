@@ -40,8 +40,10 @@ if ($null -eq $git) {
 }
 
 Push-Location $SourceRoot
+$previousGitDir = $env:GIT_DIR
 try {
-    & $git.Source -c core.autocrlf=false apply --check --whitespace=nowarn $PatchPath
+    $env:GIT_DIR = "NUL"
+    & $git.Source -c core.autocrlf=false apply --no-index --check --whitespace=nowarn $PatchPath
     if ($LASTEXITCODE -ne 0) {
         throw "The patch does not match this source tree. Confirm the exact baseline and that the source is unmodified."
     }
@@ -51,12 +53,18 @@ try {
         return
     }
 
-    & $git.Source -c core.autocrlf=false apply --whitespace=nowarn $PatchPath
+    & $git.Source -c core.autocrlf=false apply --no-index --whitespace=nowarn $PatchPath
     if ($LASTEXITCODE -ne 0) {
         throw "Git failed while applying crossplay-core.patch."
     }
 }
 finally {
+    if ($null -eq $previousGitDir) {
+        Remove-Item Env:GIT_DIR -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:GIT_DIR = $previousGitDir
+    }
     Pop-Location
 }
 

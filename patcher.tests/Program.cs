@@ -18,7 +18,24 @@ Require(target.Platform == GamePlatform.Pc, "PE target was not classified as PC.
 var before = await service.ValidateSourceAsync(sourceRoot);
 Require(before.IsValid, "Clean source did not pass validation.");
 Require(!before.IsAlreadyPatched, "Clean source was incorrectly marked patched.");
-Require(before.CheckedFiles == 30, $"Expected 30 baseline files, got {before.CheckedFiles}.");
+Require(before.CheckedFiles == 31, $"Expected 31 baseline files, got {before.CheckedFiles}.");
+
+var managerPath = Path.Combine(sourceRoot, @"Minecraft.Client\Common\Network\GameNetworkManager.cpp");
+var cleanManager = await File.ReadAllBytesAsync(managerPath);
+try
+{
+    var marker = System.Text.Encoding.ASCII.GetBytes("\n// CPlatformNetworkManagerRelay\n");
+    await File.WriteAllBytesAsync(managerPath, cleanManager.Concat(marker).ToArray());
+    var stale = await service.ValidateSourceAsync(sourceRoot);
+    Require(!stale.IsValid && stale.IsAlreadyPatched, "An older relay patch was not rejected.");
+    Require(
+        stale.Problems.Any(problem => problem.Contains("older relay patch", StringComparison.OrdinalIgnoreCase)),
+        "Older relay patch validation did not explain how to upgrade.");
+}
+finally
+{
+    await File.WriteAllBytesAsync(managerPath, cleanManager);
+}
 
 var firstConfig = new RelayConfiguration(
     "192.168.50.10",

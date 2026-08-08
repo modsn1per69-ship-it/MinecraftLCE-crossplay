@@ -38,6 +38,18 @@ describes generated profiles, imported profiles, and signed-in user slots.
 Profile storage location varies with portable mode, so inspect the user directory
 used by that exact Xenia instance.
 
+## Xbox 360 XUI DLC join freeze
+
+Patcher versions before 0.2.3 did not bypass every platform DLC installation
+call in the old Xbox 360 XUI create/join scenes. A trace containing
+`StartInstallDLCProcess`, `XUI_MultiGameJoinLoad.cpp`, or
+`XUI_MultiGameCreate.cpp` requires the 0.2.3 source patch.
+
+Reapply the patch to a clean matching source tree and rebuild `Release|Xbox
+360`. Reconfiguring the relay does not modify an existing XEX. In relay builds,
+the XUI create/join scenes must use `LegacyRelayPolicy` for platform DLC,
+sign-in, multiplayer privilege, online-game, and user-content decisions.
+
 ## Address rules
 
 - `127.0.0.1` means the same machine. It is valid only when the relay and client are on the same PC.

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.3 - 2026-08-09
+
+### Fixed
+
+- Prevented Xbox 360 relay builds from entering platform DLC installation in
+  `XUI_MultiGameJoinLoad.cpp` and `XUI_MultiGameCreate.cpp`.
+- Routed the old XUI create scene's sign-in, multiplayer privilege, online-game,
+  and user-content checks through `LegacyRelayPolicy`.
+- Expanded baseline verification and backups from 30 to 31 files to include
+  `XUI_MultiGameCreate.cpp`.
+- Made the PowerShell apply/remove scripts independent of unrelated parent Git
+  repositories.
+
 ## 0.2.2 - 2026-08-07
 
 ### Fixed

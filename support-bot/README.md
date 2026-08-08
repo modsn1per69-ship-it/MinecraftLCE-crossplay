@@ -11,6 +11,7 @@ For mention-based support, it includes up to five recent messages from the same 
 - relay bind-address mistakes
 - session/build/protocol mismatches
 - Xenia profile state causing an endless join spinner
+- Xbox 360 XUI/DLC installation freezes during relay create or join
 - endless joining screens and missing host/join handshakes
 - common PC/Xenia/RPCS3 build and runtime evidence
 

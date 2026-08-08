@@ -118,6 +118,24 @@ public sealed class PatchService
                 @"Minecraft.Client\Common\Network\Relay\LegacyRelayUserConfig.h");
             if (!File.Exists(configPath))
                 problems.Add("Relay patch detected, but LegacyRelayUserConfig.h is missing.");
+
+            var xuiCreatePath = Path.Combine(
+                sourceRoot,
+                @"Minecraft.Client\Common\XUI\XUI_MultiGameCreate.cpp");
+            var xuiJoinPath = Path.Combine(
+                sourceRoot,
+                @"Minecraft.Client\Common\XUI\XUI_MultiGameJoinLoad.cpp");
+            var hasCurrentXuiPatch = File.Exists(xuiCreatePath) &&
+                File.Exists(xuiJoinPath) &&
+                (await File.ReadAllTextAsync(xuiCreatePath)).Contains(
+                    "LegacyRelayPolicy::UsesPlatformDLCInstall", StringComparison.Ordinal) &&
+                (await File.ReadAllTextAsync(xuiJoinPath)).Contains(
+                    "LegacyRelayPolicy::UsesPlatformDLCInstall", StringComparison.Ordinal);
+            if (!hasCurrentXuiPatch)
+            {
+                problems.Add(
+                    "An older relay patch is installed. Restore the clean source backup, then apply patcher 0.2.3 so the Xbox 360 XUI DLC fix is included.");
+            }
             return new SourceValidation(problems.Count == 0, true, 0, problems);
         }
 

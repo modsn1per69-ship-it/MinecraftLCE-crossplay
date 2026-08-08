@@ -8,7 +8,7 @@ available and does not replace the platform toolchains.
 
 - accepts a Windows EXE, Xbox 360 XEX, PS3 PKG, or PS3 SELF/EBOOT
 - validates the file signature locally and records its SHA-256 hash
-- verifies the selected source against the tested 30-file baseline manifest
+- verifies the selected source against the tested 31-file baseline manifest
 - creates a timestamped source backup before applying changes
 - runs the same `crossplay-core.patch` compatibility check and application
 - installs the eight relay adapter files

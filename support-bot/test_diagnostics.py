@@ -40,6 +40,11 @@ class DiagnosticTests(unittest.TestCase):
         codes = [item.code for item in diagnose("Xenia gets infinite loading when joining the server")]
         self.assertEqual(["xenia-profile-join-stall", "join-stall"], codes)
 
+    def test_xbox_xui_dlc_join_stall_is_detected(self):
+        text = "Xenia freezes in XUI_MultiGameJoinLoad.cpp at app.StartInstallDLCProcess(m_iPad)"
+        codes = [item.code for item in diagnose(text)]
+        self.assertEqual(["xbox-xui-dlc-stall"], codes)
+
     def test_physical_xbox_stall_does_not_trigger_xenia_profile(self):
         codes = {item.code for item in diagnose("My physical Xbox 360 has infinite loading")}
         self.assertNotIn("xenia-profile-join-stall", codes)

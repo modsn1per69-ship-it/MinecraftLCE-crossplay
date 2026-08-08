@@ -799,8 +799,178 @@ index bbfa243b21cb521f4f2f6c0a4d3e8e5d113e8594..7d915123b801f5e4e6dc92da0c416b01
  }
  
 -
+diff --git a/Minecraft.Client/Common/XUI/XUI_MultiGameCreate.cpp b/Minecraft.Client/Common/XUI/XUI_MultiGameCreate.cpp
+index b3608b0..7e116c9 100644
+--- a/Minecraft.Client/Common/XUI/XUI_MultiGameCreate.cpp
++++ b/Minecraft.Client/Common/XUI/XUI_MultiGameCreate.cpp
+@@ -3,6 +3,7 @@
+ #include "..\..\..\Minecraft.World\StringHelpers.h"
+ #include "XUI_MultiGameCreate.h"
+ #include "XUI_Controls.h"
++#include "..\Network\Relay\LegacyRelayPolicy.h"
+ #include "..\..\MinecraftServer.h"
+ #include "..\..\Minecraft.h"
+ #include "..\..\Options.h"
+@@ -67,9 +68,9 @@ HRESULT CScene_MultiGameCreate::OnInit( XUIMessageInit* pInitData, BOOL& bHandle
+ 	m_iPad=params->iPad;
+ 	delete params;
+ 
+-	m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++	m_bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 	// 4J-PB - read the settings for the online flag. We'll only save this setting if the user changed it.
+-	bool bGameSetting_Online=(app.GetGameSettings(m_iPad,eGameSetting_Online)!=0);
++	bool bGameSetting_Online = LegacyRelayPolicy::OnlineGame(app.GetGameSettings(m_iPad, eGameSetting_Online) != 0);
+ 	m_MoreOptionsParams.bOnlineSettingChangedBySystem=false;
+ 
+ 	// Set the text for friends of friends, and default to on
+@@ -164,7 +165,7 @@ HRESULT CScene_MultiGameCreate::OnInit( XUIMessageInit* pInitData, BOOL& bHandle
+ 	m_iTexturePacksNotInstalled=0;
+ 
+ 	// block input if we're waiting for DLC to install, and wipe the saves list. The end of dlc mounting custom message will fill the list again
+-	if(app.StartInstallDLCProcess(m_iPad)==true)
++	if(LegacyRelayPolicy::UsesPlatformDLCInstall() && app.StartInstallDLCProcess(m_iPad)==true)
+ 	{
+ 		// not doing a mount, so enable input
+ 		m_bIgnoreInput=true;
+@@ -369,7 +370,7 @@ HRESULT CScene_MultiGameCreate::OnNotifyPressEx(HXUIOBJ hObjPressed, XUINotifyPr
+ 
+ 		m_bIgnoreInput = true;
+ 		SetShow( FALSE );
+-		bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && m_MoreOptionsParams.bOnlineGame;
++		bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && m_MoreOptionsParams.bOnlineGame;
+ 
+ 		// if the profile data has been changed, then force a profile write (we save the online/invite/friends of friends settings)
+ 		// It seems we're allowed to break the 5 minute rule if it's the result of a user action
+@@ -406,7 +407,7 @@ HRESULT CScene_MultiGameCreate::OnNotifyPressEx(HXUIOBJ hObjPressed, XUINotifyPr
+ 					UINT uiIDA[1];
+ 					uiIDA[0]=IDS_OK;
+ 
+-					if(!ProfileManager.IsSignedInLive(pNotifyPressData->UserIndex))
++					if(!LegacyRelayPolicy::IsSignedInLive(pNotifyPressData->UserIndex))
+ 					{
+ 						// need to be signed in to live
+ 						StorageManager.RequestMessageBox(IDS_PRO_NOTONLINE_TITLE, IDS_PRO_XBOXLIVE_NOTIFICATION, uiIDA, 1);
+@@ -476,7 +477,7 @@ HRESULT CScene_MultiGameCreate::OnNotifyPressEx(HXUIOBJ hObjPressed, XUINotifyPr
+ 				bool noUGC = false;
+ 				BOOL pccAllowed = TRUE;
+ 				BOOL pccFriendsAllowed = TRUE;
+-				ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++				LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ 				if(!pccAllowed && !pccFriendsAllowed) noUGC = true;
+ 			
+ 				if(isClientSide && noUGC )
+@@ -561,7 +562,7 @@ int CScene_MultiGameCreate::WarningTrialTexturePackReturned(void *pParam,int iPa
+ 	CScene_MultiGameCreate* pScene = (CScene_MultiGameCreate*)pParam;
+ 	pScene->m_bIgnoreInput = false;
+ 	pScene->SetShow( TRUE );
+-	bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pScene->m_MoreOptionsParams.bOnlineGame;
++	bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pScene->m_MoreOptionsParams.bOnlineGame;
+ 
+ 
+ 	// 4J Stu - If we only have one controller connected, then don't show the sign-in UI again
+@@ -581,7 +582,7 @@ int CScene_MultiGameCreate::WarningTrialTexturePackReturned(void *pParam,int iPa
+ 		bool noUGC = false;
+ 		BOOL pccAllowed = TRUE;
+ 		BOOL pccFriendsAllowed = TRUE;
+-		ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++		LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ 		if(!pccAllowed && !pccFriendsAllowed) noUGC = true;
+ 
+ 		if(isClientSide && noUGC )
+@@ -663,7 +664,7 @@ HRESULT CScene_MultiGameCreate::OnTimer( XUIMessageTimer *pTimer, BOOL& bHandled
+ 	
+ 	case GAME_CREATE_ONLINE_TIMER_ID:
+ 		{
+-			bool bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
++			bool bMultiplayerAllowed = LegacyRelayPolicy::IsSignedInLive(m_iPad) && LegacyRelayPolicy::AllowedToPlayMultiplayer(m_iPad);
+ 
+ 			if(bMultiplayerAllowed != m_bMultiplayerAllowed)
+ 			{
+@@ -758,7 +759,7 @@ int CScene_MultiGameCreate::ConfirmCreateReturned(void *pParam,int iPad,C4JStora
+ 
+ 	if(result==C4JStorage::EMessage_ResultAccept) 
+ 	{
+-		bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
++		bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
+ 
+ 		// 4J Stu - If we only have one controller connected, then don't show the sign-in UI again
+ 		DWORD connectedControllers = 0;
+@@ -774,11 +775,11 @@ int CScene_MultiGameCreate::ConfirmCreateReturned(void *pParam,int iPad,C4JStora
+ 		else
+ 		{
+ 			// Check if user-created content is allowed, as we cannot play multiplayer if it's not
+-			bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
++			bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
+ 			bool noUGC = false;
+ 			BOOL pccAllowed = TRUE;
+ 			BOOL pccFriendsAllowed = TRUE;
+-			ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++			LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ 			if(!pccAllowed && !pccFriendsAllowed) noUGC = true;
+ 			
+ 			if(isClientSide && noUGC )
+@@ -817,14 +818,14 @@ int CScene_MultiGameCreate::StartGame_SignInReturned(void *pParam,bool bContinue
+ 		{
+ 			DWORD dwLocalUsersMask = 0;
+ 			
+-			bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
++			bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
+ 			bool noPrivileges = false;
+ 
+ 			for(unsigned int index = 0; index < XUSER_MAX_COUNT; ++index)
+ 			{
+ 				if(ProfileManager.IsSignedIn(index) )
+ 				{
+-					if( !ProfileManager.AllowedToPlayMultiplayer(index) ) noPrivileges = true;
++					if(!LegacyRelayPolicy::AllowedToPlayMultiplayer(index)) noPrivileges = true;
+ 					dwLocalUsersMask |= CGameNetworkManager::GetLocalPlayerMask(index);
+ 				}
+ 			}
+@@ -833,7 +834,7 @@ int CScene_MultiGameCreate::StartGame_SignInReturned(void *pParam,bool bContinue
+ 			bool noUGC = false;
+ 			BOOL pccAllowed = TRUE;
+ 			BOOL pccFriendsAllowed = TRUE;
+-			ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
++			LegacyRelayPolicy::AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(), false, &pccAllowed, &pccFriendsAllowed);
+ 			if(!pccAllowed && !pccFriendsAllowed) noUGC = true;
+ 			
+ 			if(isClientSide && (noPrivileges || noUGC) )
+@@ -876,7 +877,7 @@ void CScene_MultiGameCreate::CreateGame(CScene_MultiGameCreate* pClass, DWORD dw
+ 	// stop the timer running that causes a check for new texture packs in TMS but not installed, since this will run all through the create game, and will crash if it tries to create an hbrush
+ 	XuiKillTimer(pClass->m_hObj,CHECKFORAVAILABLETEXTUREPACKS_TIMER_ID);
+ 
+-	bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
++	bool isClientSide = LegacyRelayPolicy::IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
+ 	bool isPrivate = pClass->m_MoreOptionsParams.bInviteOnly?true:false;
+ 
+ 	// clear out the app's terrain features list
+@@ -1032,7 +1033,7 @@ HRESULT CScene_MultiGameCreate::OnTransitionEnd( XUIMessageTransition *pTransiti
+ 			// Can't call this here because if you back out of the load info screen and then go back in and load a game, it will attempt to use the dlc as it's running a mount of the dlc
+ 
+ 			// block input if we're waiting for DLC to install, and wipe the saves list. The end of dlc mounting custom message will fill the list again
+-			if(app.StartInstallDLCProcess(m_iPad)==false)
++			if(!LegacyRelayPolicy::UsesPlatformDLCInstall() || app.StartInstallDLCProcess(m_iPad)==false)
+ 			{
+ 				// not doing a mount, so re-enable input
+ 				m_bIgnoreInput=false;
+@@ -1257,7 +1258,7 @@ int CScene_MultiGameCreate::TexturePackDialogReturned(void *pParam,int iPad,C4JS
+ HRESULT CScene_MultiGameCreate::OnCustomMessage_DLCInstalled()
+ {
+ 	// mounted DLC may have changed
+-	if(app.StartInstallDLCProcess(m_iPad)==false)
++	if(!LegacyRelayPolicy::UsesPlatformDLCInstall() || app.StartInstallDLCProcess(m_iPad)==false)
+ 	{
+ 		// not doing a mount, so re-enable input
+ 		m_bIgnoreInput=false;
+@@ -1394,4 +1395,4 @@ void CScene_MultiGameCreate::ClearTexturePackDescription()
+ 	m_texturePackDescription.SetText(L" ");
+ 	m_texturePackComparison->UseBrush(NULL);
+ 	m_texturePackIcon->UseBrush(NULL);
+-}
+\ No newline at end of file
++}
 diff --git a/Minecraft.Client/Common/XUI/XUI_MultiGameJoinLoad.cpp b/Minecraft.Client/Common/XUI/XUI_MultiGameJoinLoad.cpp
-index 73f25da5849427c4884d00171d034cb4b3b6465d..607c2b3ae237d88b68545dd1ed83ce741b512f81 100644
+index 73f25da..bf6a6e7 100644
 --- a/Minecraft.Client/Common/XUI/XUI_MultiGameJoinLoad.cpp
 +++ b/Minecraft.Client/Common/XUI/XUI_MultiGameJoinLoad.cpp
 @@ -19,6 +19,7 @@
@@ -820,6 +990,15 @@ index 73f25da5849427c4884d00171d034cb4b3b6465d..607c2b3ae237d88b68545dd1ed83ce74
  	
  	XPARTY_USER_LIST partyList;
  
+@@ -101,7 +102,7 @@ HRESULT CScene_MultiGameJoinLoad::OnInit( XUIMessageInit* pInitData, BOOL& bHand
+ 	m_pGamesList = (CXuiCtrl4JList *)pObj;
+ 
+ 	// block input if we're waiting for DLC to install, and wipe the saves list. The end of dlc mounting custom message will fill the list again
+-	if(app.StartInstallDLCProcess(m_iPad)==true)
++	if(LegacyRelayPolicy::UsesPlatformDLCInstall() && app.StartInstallDLCProcess(m_iPad)==true)
+ 	{
+ 		// not doing a mount, so enable input
+ 		m_bIgnoreInput=true;
 @@ -766,7 +767,7 @@ HRESULT CScene_MultiGameJoinLoad::OnNavReturn(HXUIOBJ hSceneFrom,BOOL& rfHandled
  	// start the texture pack timer again
  	XuiSetTimer(m_hObj,CHECKFORAVAILABLETEXTUREPACKS_TIMER_ID,CHECKFORAVAILABLETEXTUREPACKS_TIMER_TIME);
@@ -829,6 +1008,15 @@ index 73f25da5849427c4884d00171d034cb4b3b6465d..607c2b3ae237d88b68545dd1ed83ce74
  	
  	// re-enable button presses
  	m_bIgnoreInput=false;
+@@ -903,7 +904,7 @@ HRESULT CScene_MultiGameJoinLoad::OnTransitionStart( XUIMessageTransition *pTran
+ 			// Can't call this here because if you back out of the load info screen and then go back in and load a game, it will attempt to use the dlc as it's running a mount of the dlc
+ 			
+ 			// block input if we're waiting for DLC to install, and wipe the saves list. The end of dlc mounting custom message will fill the list again
+-			if(app.StartInstallDLCProcess(m_iPad)==false)
++			if(!LegacyRelayPolicy::UsesPlatformDLCInstall() || app.StartInstallDLCProcess(m_iPad)==false)
+ 			{
+ 				// not doing a mount, so re-enable input
+ 				m_bIgnoreInput=false;
 @@ -1641,7 +1642,7 @@ HRESULT CScene_MultiGameJoinLoad::OnTimer( XUIMessageTimer *pTimer, BOOL& bHandl
  			m_bInParty=false;
  		}
@@ -838,6 +1026,15 @@ index 73f25da5849427c4884d00171d034cb4b3b6465d..607c2b3ae237d88b68545dd1ed83ce74
  		if(bMultiplayerAllowed != m_bMultiplayerAllowed)
  		{
  			if( bMultiplayerAllowed )
+@@ -2490,7 +2491,7 @@ HRESULT CScene_MultiGameJoinLoad::OnCustomMessage_DLCInstalled()
+ {
+ 	// mounted DLC may have changed
+ 	
+-	if(app.StartInstallDLCProcess(m_iPad)==false)
++	if(!LegacyRelayPolicy::UsesPlatformDLCInstall() || app.StartInstallDLCProcess(m_iPad)==false)
+ 	{
+ 		// not doing a mount, so re-enable input
+ 		m_bIgnoreInput=false;
 @@ -2764,4 +2765,4 @@ void CScene_MultiGameJoinLoad::SaveUploadCompleteCallback(LPVOID lpParam)
  	app.TMSPP_SetTitleGroupID(GROUP_ID);
  	// 	app.getRemoteStorage()->abort();

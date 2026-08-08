@@ -51,7 +51,7 @@ The patcher:
 
 ### 3. Select the source
 
-Choose the clean matching LCE source root. The patcher checks 30 files against
+Choose the clean matching LCE source root. The patcher checks 31 files against
 the tested SHA-256 manifest before it changes anything.
 
 Do not force the patch onto another title update, an older experiment, or a
@@ -212,6 +212,11 @@ If a fresh signed-in profile also stalls, inspect the relay log. It must show
 both the hosting and joining peer in the same session with the same build ID and
 V2 protocol. For a physical Xbox 360, follow the LAN address and TCP `61000`
 checks instead; Xenia profile troubleshooting does not apply.
+
+If a crash log or source trace mentions `StartInstallDLCProcess` or
+`XUI_MultiGameJoinLoad.cpp`, use patcher `v0.2.3` or newer, reapply the patch,
+and rebuild the Xbox 360 target. Relay builds bypass the platform DLC installer
+in both old XUI create/join scenes.
 
 ## Build the patcher from source
 

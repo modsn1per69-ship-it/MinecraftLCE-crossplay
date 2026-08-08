@@ -1,4 +1,26 @@
-# Minecraft Legacy Console Crossplay 0.2.2
+# Minecraft Legacy Console Crossplay 0.2.3
+
+## Xbox 360 XUI join freeze fix
+
+Version 0.2.3 prevents relay builds from calling the platform DLC installation
+path in the old Xbox 360 create/join XUI scenes. On Xenia this path could end in
+an invalid-address exception; on physical consoles it could leave the loading
+screen spinning forever.
+
+The old XUI create scene now uses `LegacyRelayPolicy` consistently for sign-in,
+multiplayer privileges, online-game state, and user-created-content checks. This
+prevents a brief offline platform result from cancelling a relay world load.
+
+Baseline validation and backups now include 31 files, adding
+`XUI_MultiGameCreate.cpp`. The PowerShell apply/remove scripts also use the same
+repository-independent patch mode as the desktop patcher.
+
+Affected Xbox 360 users must reapply the patch and rebuild the XEX. Updating the
+patcher or changing relay settings cannot modify an already compiled XEX.
+
+---
+
+# Previous release: 0.2.2
 
 ## Updated patcher and Xenia join guidance
 

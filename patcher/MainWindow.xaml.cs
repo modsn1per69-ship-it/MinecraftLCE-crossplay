@@ -30,7 +30,7 @@ public partial class MainWindow : Window
         if (loadUserSettings)
             LoadSettings();
         ShowGuide("quick");
-        AppendLog("[ready] Legacy Crossplay Patcher 0.2.2");
+        AppendLog("[ready] Legacy Crossplay Patcher 0.2.3");
     }
 
     public void PrepareScreenshot(string view)
@@ -42,7 +42,7 @@ public partial class MainWindow : Window
                 "[12:04:01] Inspecting Minecraft Game" + Environment.NewLine +
                 "[12:04:02] Platform signature recognized" + Environment.NewLine +
                 "[12:04:02] SHA-256 calculated locally" + Environment.NewLine +
-                "[12:04:03] All 30 baseline files matched" + Environment.NewLine +
+                "[12:04:03] All 31 baseline files matched" + Environment.NewLine +
                 "[12:04:03] Backup created" + Environment.NewLine +
                 "[12:04:04] Crossplay patch applied successfully" + Environment.NewLine +
                 "[12:04:04] Relay defaults written" + Environment.NewLine +
@@ -374,6 +374,9 @@ public partial class MainWindow : Window
 
                 XENIA CONNECTING FOREVER
                 Close Minecraft, select one valid signed-in Xenia profile, restart Xenia, and retry. If it still stalls, back up the original profile and test with a fresh Xenia-generated profile before changing relay settings.
+
+                XUI DLC INSTALL FREEZE
+                Version 0.2.3 bypasses StartInstallDLCProcess in relay create/join scenes. Reapply the patch and rebuild the Xbox 360 target; changing an existing XEX is not enough.
 
                 CONNECTING FOREVER
                 Confirm the relay is listening, the PC host is already inside an online world, and every client has exactly the same session and build ID.
